@@ -1339,6 +1339,11 @@ async function startNewRun(
   }
 
   // Run the advance loop starting from the entry node.
+  if ((flow.trigger_config as Record<string, unknown>).sales_intake === true && input.message.kind === "text" &&
+      (!input.message.text.trim() || /(?:asesor|vendedor|persona|humano|llama|no entiendo)/i.test(input.message.text))) {
+    await executeHandoff(db, run, { node_key: "human_request", config: { round_robin: true, note: "Solicitud inicial de atención humana. Mensaje: " + input.message.text } } as unknown as FlowNodeRow);
+    return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
+  }
   const intakeEntry = (flow.trigger_config as Record<string, unknown>).sales_intake === true && run.vars.vehiculo ? "resources" : flow.entry_node_id!;
   const outcome = await advanceFromNodeKey(db, run, intakeEntry, nodes);
   return {

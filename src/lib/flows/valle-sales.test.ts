@@ -41,3 +41,10 @@ it('keeps an obvious vehicle from the first message instead of asking again',asy
  await input('Quisiera una Toyota Hilux',true); expect(h.buttons).toHaveBeenCalledTimes(1); expect(h.text).not.toHaveBeenCalled();
  expect(h.tables.flow_runs[0].vars).toMatchObject({vehiculo:'Quisiera una Toyota Hilux'});
 });
+
+it('honors a human request in the very first message without asking questions',async()=>{
+ await input('Quiero hablar con un asesor',true); expect(h.assignments).toHaveBeenCalledTimes(1); expect(h.text).not.toHaveBeenCalled();
+});
+it('routes an initial audio directly to a human',async()=>{
+ await input('',true); expect(h.assignments).toHaveBeenCalledTimes(1); expect(h.text).not.toHaveBeenCalled();
+});
