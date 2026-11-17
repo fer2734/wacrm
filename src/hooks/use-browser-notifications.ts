@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
+import { toast } from "sonner";
+import { showBrowserNotification } from "@/lib/notifications/show-browser-notification";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
@@ -75,7 +77,6 @@ export function useBrowserNotifications(): void {
 
   useEffect(() => {
     if (!enabled) return;
-    if (getNotificationPermission() === "unsupported") return;
 
     const supabase = createClient();
     let cancelled = false;
@@ -88,7 +89,7 @@ export function useBrowserNotifications(): void {
         .select("contact:contacts(name, wa_username, phone)")
         .eq("id", msg.conversation_id)
         .maybeSingle();
-      if (cancelled) return;
+      if (cancelled || !data) return;
 
       const contact = (data as {
         contact?: { name?: string | null; wa_username?: string | null; phone?: string | null } | null;
@@ -99,24 +100,17 @@ export function useBrowserNotifications(): void {
         labelsRef.current,
       );
 
+      const href = conversationHref(msg.conversation_id);
+      const inApp = () => toast(title, {
+        description: body,
+        duration: 8000,
+        action: { label: "Abrir conversación", onClick: () => router.push(href) },
+      });
+      if (getNotificationPermission() !== "granted") { inApp(); return; }
       try {
-        const notification = new Notification(title, {
-          body,
-          // One alert per conversation: a second message from the same
-          // customer replaces the first instead of stacking.
-          tag: msg.conversation_id,
-          icon: "/icon",
-        });
-        notification.onclick = () => {
-          window.focus();
-          router.push(conversationHref(msg.conversation_id));
-          notification.close();
-        };
-      } catch (err) {
-        // Some browsers throw from the constructor (e.g. Android Chrome
-        // requires a service worker). Non-fatal.
-        console.error("[useBrowserNotifications] failed to show:", err);
-      }
+        await showBrowserNotification(title, { body, tag: msg.conversation_id, icon: "/icon" }, href);
+      } catch { inApp(); }
+
     };
 
     const channel = supabase
@@ -127,7 +121,6 @@ export function useBrowserNotifications(): void {
         (payload) => {
           // Re-check every time: the user can revoke permission in the
           // browser without the preference flipping.
-          if (getNotificationPermission() !== "granted") return;
           const msg = payload.new as Message;
           const shouldNotify = shouldNotifyForMessage(msg, {
             documentVisible: document.visibilityState === "visible",

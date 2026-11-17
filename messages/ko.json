@@ -41,7 +41,8 @@
     "defaultAvatar": "아바타",
     "menuProfile": "프로필",
     "menuSettings": "설정",
-    "menuSignOut": "로그아웃"
+    "menuSignOut": "로그아웃",
+    "myPipeline": "My funnel"
   },
   "Header": {
     "dashboard": "대시보드",
@@ -2053,7 +2054,7 @@
       "statusDefault": "켜면 브라우저가 알림 권한을 요청합니다.",
       "statusDenied": "브라우저 설정에서 차단됨",
       "deniedHint": "브라우저의 사이트 설정(보통 주소창 옆 잠금 아이콘)에서 이 사이트의 알림을 허용한 뒤 페이지를 새로 고치세요.",
-      "unsupported": "이 브라우저는 데스크톱 알림을 지원하지 않습니다.",
+      "unsupported": "This browser does not support system notifications. You can use in-app alerts.",
       "sendTest": "테스트 알림 보내기",
       "testTitle": "테스트 알림",
       "testBody": "알림이 정상 작동합니다. 새 고객 메시지가 이렇게 표시됩니다.",
@@ -2066,7 +2067,10 @@
         "document": "📄 문서",
         "location": "📍 위치",
         "template": "📋 템플릿"
-      }
+      },
+      "inAppEnabled": "In-app alerts enabled.",
+      "inAppTest": "Alerts appear inside the CRM while it is open.",
+      "openBrowserHint": "For system alerts, open this site directly in Chrome and allow notifications. On iPhone, add it to the Home Screen and open it there. Keep the CRM open; closed-app push delivery is not enabled."
     },
     "apiKeys": {
       "title": "API 키",
@@ -2934,5 +2938,28 @@
       "metaApiStatus": "Meta API 오류: {status}",
       "syncFailed": "템플릿을 동기화하지 못했습니다"
     }
+  },
+  "SalesFunnel": {
+    "title": "Sales funnel",
+    "myFunnel": "My funnel",
+    "agentHint": "Only your assigned conversations appear. Open a card to view the chat or change its stage using the selector.",
+    "teamHint": "Organize leads by stage, search for a customer and filter by advisor. Open a card to view its chat.",
+    "stage": "Sales stage",
+    "stageFor": "Sales stage for {name}",
+    "saveFailed": "Could not save the stage. Check your connection and try again.",
+    "saved": "Stage updated",
+    "saving": "Saving",
+    "loading": "Loading stages…",
+    "loadFailed": "Could not load stages",
+    "chooseStage": "Select stage",
+    "noStages": "Ask an administrator to create a funnel",
+    "search": "Search by name or phone",
+    "advisor": "Advisor",
+    "allAdvisors": "All advisors",
+    "unassigned": "Unassigned",
+    "total": "Leads",
+    "open": "In progress",
+    "won": "Sales won",
+    "lost": "Not interested"
   }
 }

@@ -41,7 +41,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "myPipeline": "My funnel"
   },
   "Header": {
     "dashboard": "Dashboard",
@@ -2053,7 +2054,7 @@
       "statusDefault": "Turning this on will ask your browser for permission.",
       "statusDenied": "Blocked in browser settings",
       "deniedHint": "Allow notifications for this site in your browser's site settings (usually the lock icon next to the address bar), then reload the page.",
-      "unsupported": "This browser doesn't support desktop notifications.",
+      "unsupported": "This browser does not support system notifications. You can use in-app alerts.",
       "sendTest": "Send test notification",
       "testTitle": "Test notification",
       "testBody": "Notifications are working. New customer messages will show up like this.",
@@ -2066,7 +2067,10 @@
         "document": "📄 Document",
         "location": "📍 Location",
         "template": "📋 Template"
-      }
+      },
+      "inAppEnabled": "In-app alerts enabled.",
+      "inAppTest": "Alerts appear inside the CRM while it is open.",
+      "openBrowserHint": "For system alerts, open this site directly in Chrome and allow notifications. On iPhone, add it to the Home Screen and open it there. Keep the CRM open; closed-app push delivery is not enabled."
     },
     "apiKeys": {
       "title": "API keys",
@@ -2934,5 +2938,28 @@
       "metaApiStatus": "Meta API error: {status}",
       "syncFailed": "Failed to sync templates"
     }
+  },
+  "SalesFunnel": {
+    "title": "Sales funnel",
+    "myFunnel": "My funnel",
+    "agentHint": "Only your assigned conversations appear. Open a card to view the chat or change its stage using the selector.",
+    "teamHint": "Organize leads by stage, search for a customer and filter by advisor. Open a card to view its chat.",
+    "stage": "Sales stage",
+    "stageFor": "Sales stage for {name}",
+    "saveFailed": "Could not save the stage. Check your connection and try again.",
+    "saved": "Stage updated",
+    "saving": "Saving",
+    "loading": "Loading stages…",
+    "loadFailed": "Could not load stages",
+    "chooseStage": "Select stage",
+    "noStages": "Ask an administrator to create a funnel",
+    "search": "Search by name or phone",
+    "advisor": "Advisor",
+    "allAdvisors": "All advisors",
+    "unassigned": "Unassigned",
+    "total": "Leads",
+    "open": "In progress",
+    "won": "Sales won",
+    "lost": "Not interested"
   }
 }

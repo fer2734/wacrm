@@ -23,7 +23,7 @@
     "inbox": "Bandeja de entrada",
     "notifications": "Notificaciones",
     "contacts": "Contactos",
-    "pipelines": "Pipelines",
+    "pipelines": "Embudo de ventas",
     "broadcasts": "Difusiones",
     "automations": "Automatizaciones",
     "flows": "Flujos",
@@ -41,7 +41,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Perfil",
     "menuSettings": "Configuración",
-    "menuSignOut": "Cerrar sesión"
+    "menuSignOut": "Cerrar sesión",
+    "myPipeline": "Mi embudo"
   },
   "Header": {
     "dashboard": "Panel",
@@ -2046,14 +2047,14 @@
     },
     "browserNotifications": {
       "title": "Notificaciones del navegador",
-      "description": "Recibe una alerta de escritorio por cada nuevo mensaje de cliente, incluso cuando estés en otra página. Se guarda en este dispositivo.",
+      "description": "Recibí avisos por nuevos mensajes. En navegadores compatibles se muestran también en el celular o escritorio. La preferencia se guarda en este dispositivo.",
       "toggleLabel": "Avisarme de nuevos mensajes de clientes",
       "toggleDesc": "Solo funciona mientras la app esté abierta en una pestaña del navegador.",
       "statusGranted": "Permitido por tu navegador.",
       "statusDefault": "Al activarlo, tu navegador pedirá permiso.",
       "statusDenied": "Bloqueado en la configuración del navegador",
       "deniedHint": "Permite las notificaciones de este sitio en la configuración de sitios de tu navegador (normalmente el ícono de candado junto a la barra de direcciones) y luego recarga la página.",
-      "unsupported": "Este navegador no admite notificaciones de escritorio.",
+      "unsupported": "Este navegador integrado no permite alertas del sistema. Podés recibir avisos dentro del CRM.",
       "sendTest": "Enviar notificación de prueba",
       "testTitle": "Notificación de prueba",
       "testBody": "Las notificaciones funcionan. Los nuevos mensajes de clientes aparecerán así.",
@@ -2066,7 +2067,10 @@
         "document": "📄 Documento",
         "location": "📍 Ubicación",
         "template": "📋 Plantilla"
-      }
+      },
+      "inAppEnabled": "Avisos dentro del CRM activados.",
+      "inAppTest": "Los avisos aparecen dentro del CRM mientras esté abierto.",
+      "openBrowserHint": "Para alertas del celular, abrí este sitio directamente en Chrome y permití las notificaciones. En iPhone, agregalo a la pantalla de inicio y abrilo desde allí. Las alertas requieren mantener el CRM abierto; todavía no se envían con la app cerrada."
     },
     "apiKeys": {
       "title": "Claves de API",
@@ -2934,5 +2938,28 @@
       "metaApiStatus": "Error de la API de Meta: {status}",
       "syncFailed": "Error al sincronizar las plantillas"
     }
+  },
+  "SalesFunnel": {
+    "title": "Embudo de ventas",
+    "myFunnel": "Mi embudo",
+    "agentHint": "Solo aparecen las conversaciones que tenés asignadas. Abrí una tarjeta para ver el chat o cambiá su etapa desde el selector.",
+    "teamHint": "Organizá los leads por etapa, buscá un cliente y filtrá por asesor. Abrí una tarjeta para ir al chat.",
+    "stage": "Etapa de venta",
+    "stageFor": "Etapa de venta de {name}",
+    "saveFailed": "No se pudo guardar la etapa. Revisá tu conexión y volvé a intentar.",
+    "saved": "Etapa actualizada",
+    "saving": "Guardando",
+    "loading": "Cargando etapas…",
+    "loadFailed": "No se pudieron cargar las etapas",
+    "chooseStage": "Seleccionar etapa",
+    "noStages": "El administrador debe crear un embudo",
+    "search": "Buscar por nombre o teléfono",
+    "advisor": "Asesor",
+    "allAdvisors": "Todos los asesores",
+    "unassigned": "Sin asignar",
+    "total": "Leads",
+    "open": "En gestión",
+    "won": "Ventas concretadas",
+    "lost": "No interesados"
   }
 }

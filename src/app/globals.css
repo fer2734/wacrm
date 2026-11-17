@@ -5,6 +5,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.45;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -102,7 +106,7 @@ html[data-mode="dark"] {
   --secondary: oklch(0.22 0.01 260);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.22 0.01 260);
-  --muted-foreground: oklch(0.65 0.01 260);
+  --muted-foreground: oklch(0.76 0.01 260);
   --accent: oklch(0.22 0.01 260);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -125,7 +129,7 @@ html[data-mode="dark"] {
 }
 
 html[data-mode="light"] {
-  --background: oklch(0.99 0.002 260);
+  --background: oklch(0.965 0.006 260);
   --foreground: oklch(0.21 0.01 260);
   --card: oklch(1 0 0);
   --card-2: oklch(0.985 0.002 260);
@@ -135,7 +139,7 @@ html[data-mode="light"] {
   --secondary: oklch(0.967 0.003 260);
   --secondary-foreground: oklch(0.25 0.01 260);
   --muted: oklch(0.967 0.003 260);
-  --muted-foreground: oklch(0.52 0.015 260);
+  --muted-foreground: oklch(0.44 0.015 260);
   --accent: oklch(0.96 0.004 260);
   --accent-foreground: oklch(0.25 0.01 260);
   --destructive: oklch(0.577 0.245 27.325);
@@ -242,4 +246,9 @@ html[data-theme="rose"] {
   html {
     @apply font-sans;
   }
+}
+@layer base {
+  body { line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  input, select, textarea, button { font-family: inherit; }
+  select option { background: var(--popover); color: var(--popover-foreground); }
 }

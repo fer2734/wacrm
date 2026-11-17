@@ -1,5 +1,6 @@
 'use client';
 
+import { showBrowserNotification } from '@/lib/notifications/show-browser-notification';
 import { useState, useSyncExternalStore } from 'react';
 import { Bell, BellRing, CircleAlert, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -56,7 +57,7 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
   const [requesting, setRequesting] = useState(false);
 
   const supported = permission !== 'unsupported';
-  const checked = enabled && permission === 'granted';
+  const checked = enabled;
 
   const onToggle = async (next: boolean) => {
     if (!next) {
@@ -67,32 +68,38 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
       writeBrowserNotifyPref(true);
       return;
     }
-    if (permission === 'denied') {
-      toast.error(t('statusDenied'), { description: t('deniedHint') });
+    if (permission === 'denied' || permission === 'unsupported') {
+      writeBrowserNotifyPref(true);
+      toast.info(t('inAppEnabled'));
       return;
     }
     setRequesting(true);
     try {
       const result = await Notification.requestPermission();
       // Also dispatches the change event, which refreshes `permission`.
-      writeBrowserNotifyPref(result === 'granted');
+      writeBrowserNotifyPref(true);
       if (result === 'denied') {
         toast.error(t('permissionDeniedToast'), { description: t('deniedHint') });
       }
+    } catch {
+      writeBrowserNotifyPref(true);
+      toast.info(t('inAppEnabled'));
     } finally {
       setRequesting(false);
     }
   };
 
-  const sendTest = () => {
+  const sendTest = async () => {
+    if (permission !== 'granted') {
+      toast.success(t('testTitle'), { description: t('inAppTest') });
+      return;
+    }
     try {
-      new Notification(t('testTitle'), {
-        body: t('testBody'),
-        icon: '/icon',
-        tag: 'wacrm-test-notification',
-      });
+      await showBrowserNotification(t('testTitle'), {
+        body: t('testBody'), icon: '/icon', tag: 'wacrm-test-notification',
+      }, '/inbox');
     } catch {
-      toast.error(t('unsupported'));
+      toast.info(t('inAppEnabled'), { description: t('openBrowserHint') });
     }
   };
 
@@ -113,12 +120,12 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
         <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!supported ? (
+        {!supported && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <CircleAlert className="size-4 shrink-0" />
             {t('unsupported')}
           </p>
-        ) : (
+        )}
           <>
             <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
               <div className="min-w-0">
@@ -134,13 +141,14 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
                 <Switch
                   checked={checked}
                   onCheckedChange={(next) => void onToggle(next)}
-                  disabled={requesting || permission === 'denied'}
+                  disabled={requesting}
                   aria-label={t('toggleLabel')}
                 />
               </div>
             </div>
 
-            <p className="text-xs text-muted-foreground">{t(statusKey)}</p>
+            <p className="text-sm text-muted-foreground">{supported ? t(statusKey) : t("inAppEnabled")}</p>
+            {permission !== "granted" && <p className="text-sm leading-relaxed text-muted-foreground">{t("openBrowserHint")}</p>}
 
             {permission === 'denied' && (
               <p className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
@@ -153,14 +161,13 @@ export function BrowserNotificationsCard({ className }: { className?: string }) 
               type="button"
               variant="outline"
               size="sm"
-              onClick={sendTest}
+              onClick={() => void sendTest()}
               disabled={!checked}
             >
               <BellRing className="size-4" />
               {t('sendTest')}
             </Button>
           </>
-        )}
       </CardContent>
     </Card>
   );
