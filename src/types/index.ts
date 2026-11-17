@@ -378,6 +378,7 @@ export interface Pipeline {
 }
 
 export interface PipelineStage {
+  deal_status?: DealStatus;
   id: string;
   pipeline_id: string;
   name: string;

@@ -169,6 +169,11 @@ describe("team onboarding and assigned-agent navigation", () => {
     const res = await middleware(new NextRequest("https://app.test/settings?tab=whatsapp"));
     expect(res.headers.get("location")).toContain("/settings?tab=profile");
   });
+  it("allows an agent to open their sales funnel", async () => {
+    mockUser = { id: "agent" }; mockRole = "agent";
+    const res = await middleware(new NextRequest("https://app.test/pipelines"));
+    expect(res.headers.get("location")).toBeNull();
+  });
   it("keeps personal settings available to agents", async () => {
     mockUser = { id: "agent" }; mockRole = "agent";
     const res = await middleware(new NextRequest("https://app.test/settings?tab=security"));

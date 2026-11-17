@@ -74,7 +74,7 @@ export async function middleware(request: NextRequest) {
 
   // Agents use the shared inbox. Workspace setup belongs to administrators.
   if (user && !pathname.startsWith('/api/') &&
-      ['/dashboard', '/broadcasts', '/automations', '/flows', '/agents', '/pipelines', '/settings'].some(path => pathname === path || pathname.startsWith(`${path}/`))) {
+      ['/dashboard', '/broadcasts', '/automations', '/flows', '/agents', '/settings'].some(path => pathname === path || pathname.startsWith(`${path}/`))) {
     const { data: profile } = await supabase.from('profiles')
       .select('account_role').eq('user_id', user.id).maybeSingle()
     if (profile?.account_role === 'agent') {
