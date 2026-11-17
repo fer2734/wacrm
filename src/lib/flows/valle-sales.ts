@@ -3,7 +3,7 @@ import type { FlowTemplate } from './templates';
 /** Deterministic intake: no model calls and no financial promises. */
 export const VALLE_SALES_FLOW: FlowTemplate = {
   slug: 'valle_sales', name: 'Valle · Indagación y reparto',
-  description: 'Preguntas guiadas sin IA y reparto por turnos entre propietarios, administradores y agentes. Al asignar, el bot se detiene.',
+  description: 'Preguntas guiadas sin IA y reparto por turnos únicamente entre agentes. Al asignar, el bot se detiene.',
   icon: 'UserPlus', trigger_type: 'first_inbound_message',
   trigger_config: { sales_intake: true }, entry_node_id: 'start',
   nodes: [
