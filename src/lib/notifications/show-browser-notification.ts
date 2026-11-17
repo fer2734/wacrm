@@ -8,7 +8,7 @@ export async function showBrowserNotification(
     throw new Error("Notifications are not permitted");
   }
   if ("serviceWorker" in navigator) {
-    await navigator.serviceWorker.register("/notifications-sw.js", { scope: "/" });
+    await navigator.serviceWorker.register("/crm-notifications-sw.js", { scope: "/" });
     const registration = await navigator.serviceWorker.ready;
     await registration.showNotification(title, { ...options, data: { href } });
     return;
