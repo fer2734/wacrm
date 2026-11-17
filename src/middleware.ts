@@ -42,6 +42,54 @@ export async function middleware(request: NextRequest) {
     return response
   }
 
+  // Keep the invitation across email confirmation, browser reloads and login.
+  const pathname = request.nextUrl.pathname
+  const invitation = pathname.startsWith('/join/')
+    ? pathname.split('/')[2]
+    : request.nextUrl.searchParams.get('invite')
+  const validInvite = invitation && /^[A-Za-z0-9_-]{43}$/.test(invitation)
+    ? invitation : null
+  if (validInvite) {
+    supabaseResponse.cookies.set('wacrm_invitation', validInvite, {
+      httpOnly: true, secure: request.nextUrl.protocol === 'https:',
+      sameSite: 'lax', path: '/', maxAge: 7 * 24 * 60 * 60,
+    })
+  }
+
+  if (user && pathname === '/dashboard') {
+    const pending = validInvite ?? request.cookies.get('wacrm_invitation')?.value
+    if (pending && /^[A-Za-z0-9_-]{43}$/.test(pending)) {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pending))
+      const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+      const { data: invite, error } = await supabase.rpc('peek_invitation', { p_token_hash: hash })
+      if (!error && invite?.ok) {
+        const url = request.nextUrl.clone()
+        url.pathname = `/join/${pending}`
+        url.search = ''
+        return withRefreshedCookies(NextResponse.redirect(url))
+      }
+      if (!error) supabaseResponse.cookies.delete('wacrm_invitation')
+    }
+  }
+
+  // Agents use the shared inbox. Workspace setup belongs to administrators.
+  if (user && !pathname.startsWith('/api/') &&
+      ['/dashboard', '/broadcasts', '/automations', '/flows', '/agents', '/pipelines', '/settings'].some(path => pathname === path || pathname.startsWith(`${path}/`))) {
+    const { data: profile } = await supabase.from('profiles')
+      .select('account_role').eq('user_id', user.id).maybeSingle()
+    if (profile?.account_role === 'agent') {
+      const personalSettings = ['profile', 'security', 'appearance']
+      const allowedSettings = pathname === '/settings' &&
+        personalSettings.includes(request.nextUrl.searchParams.get('tab') ?? '')
+      if (!allowedSettings) {
+        const url = request.nextUrl.clone()
+        url.pathname = pathname === '/settings' ? '/settings' : '/inbox'
+        url.search = pathname === '/settings' ? '?tab=profile' : ''
+        return withRefreshedCookies(NextResponse.redirect(url))
+      }
+    }
+  }
+
   // Auth pages - redirect to dashboard if already logged in.
   // Exception: when an invite token is in the query string we
   // send the already-signed-in user to /join/<token> instead so
@@ -77,6 +125,14 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return withRefreshedCookies(NextResponse.redirect(url))
+  }
+
+  if (user && ['/api/flows', '/api/automations', '/api/whatsapp/broadcast', '/api/ai/config', '/api/ai/usage', '/api/ai/knowledge', '/api/ai/playground', '/api/ai/test'].some(path => pathname === path || pathname.startsWith(`${path}/`))) {
+    const { data: profile } = await supabase.from('profiles')
+      .select('account_role').eq('user_id', user.id).maybeSingle()
+    if (profile?.account_role === 'agent') {
+      return withRefreshedCookies(NextResponse.json({ error: 'Esta función requiere un administrador' }, { status: 403 }))
+    }
   }
 
   // API routes that need auth (not webhooks)

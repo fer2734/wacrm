@@ -45,14 +45,20 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const next = safeNextPath(searchParams.get('next'));
 
+  const failurePath = (reason: 'link_invalid' | 'link_expired') => {
+    const path = loginFailurePath(reason);
+    const match = /^\/join\/([A-Za-z0-9_-]{43})$/.exec(next);
+    return match ? `${path}&invite=${encodeURIComponent(match[1])}` : path;
+  };
+
   const upstreamError = parseSupabaseError(searchParams);
   if (upstreamError) {
-    return relativeRedirect(loginFailurePath(upstreamError));
+    return relativeRedirect(failurePath(upstreamError));
   }
 
   const link = parseEmailLink(searchParams);
   if (!link) {
-    return relativeRedirect(loginFailurePath('link_invalid'));
+    return relativeRedirect(failurePath('link_invalid'));
   }
 
   const supabase = await createClient();
@@ -73,7 +79,7 @@ export async function GET(request: Request) {
       kind: link.kind,
       message: error.message,
     });
-    return relativeRedirect(loginFailurePath('link_invalid'));
+    return relativeRedirect(failurePath('link_invalid'));
   }
 
   return relativeRedirect(next);

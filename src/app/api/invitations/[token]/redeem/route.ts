@@ -83,5 +83,7 @@ export async function POST(
 
   if (error) return rpcErrorToResponse(error);
 
-  return NextResponse.json({ ok: true, accountId });
+  const response = NextResponse.json({ ok: true, accountId });
+  response.cookies.delete('wacrm_invitation');
+  return response;
 }

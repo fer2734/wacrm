@@ -77,7 +77,7 @@ function SignupPageInner() {
       : "/dashboard";
     const emailRedirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -94,6 +94,10 @@ function SignupPageInner() {
       return;
     }
 
+    if (data.session) {
+      window.location.href = next;
+      return;
+    }
     setSuccess(true);
     setLoading(false);
   };

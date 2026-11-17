@@ -10,6 +10,8 @@ import { NextRequest } from "next/server";
 //                      i.e. the freshly *rotated* auth token. The whole point
 //                      of the test is that these must survive onto whatever
 //                      response the middleware returns — including redirects.
+let mockRole = "owner";
+let mockInviteOk = true;
 let mockUser: { id: string } | null = null;
 let refreshedCookies: Array<{
   name: string;
@@ -25,6 +27,8 @@ vi.mock("@supabase/ssr", () => ({
       cookies: { setAll: (c: typeof refreshedCookies) => void };
     },
   ) => ({
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { account_role: mockRole } }) }) }) }),
+    rpc: async () => ({ data: { ok: mockInviteOk }, error: null }),
     auth: {
       // Mirrors real auth-js: an expired access token is transparently
       // refreshed inside getUser(), which rotates the refresh token and
@@ -44,6 +48,8 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
   mockUser = null;
+  mockRole = "owner";
+  mockInviteOk = true;
   refreshedCookies = [];
 });
 
@@ -136,5 +142,41 @@ describe("middleware — every dashboard route requires a session", () => {
 
     expect(res.status).toBe(307);
     expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+  });
+});
+
+
+describe("team onboarding and assigned-agent navigation", () => {
+  const token = "a".repeat(43);
+  it("remembers an invite before the user signs up", async () => {
+    const res = await middleware(new NextRequest(`https://app.test/join/${token}`));
+    expect(res.cookies.get("wacrm_invitation")?.value).toBe(token);
+    expect(res.cookies.get("wacrm_invitation")?.httpOnly).toBe(true);
+  });
+  it("returns a confirmed user to their pending invitation", async () => {
+    mockUser = { id: "user-1" };
+    const res = await middleware(new NextRequest("https://app.test/dashboard", { headers: { cookie: `wacrm_invitation=${token}` } }));
+    expect(res.headers.get("location")).toContain(`/join/${token}`);
+  });
+  it("clears a used invitation and opens the agent inbox", async () => {
+    mockUser = { id: "agent" }; mockRole = "agent"; mockInviteOk = false;
+    const res = await middleware(new NextRequest("https://app.test/dashboard", { headers: { cookie: `wacrm_invitation=${token}` } }));
+    expect(res.headers.get("location")).toContain("/inbox");
+    expect(res.cookies.get("wacrm_invitation")?.value).toBe("");
+  });
+  it("sends agents away from WhatsApp setup", async () => {
+    mockUser = { id: "agent" }; mockRole = "agent";
+    const res = await middleware(new NextRequest("https://app.test/settings?tab=whatsapp"));
+    expect(res.headers.get("location")).toContain("/settings?tab=profile");
+  });
+  it("keeps personal settings available to agents", async () => {
+    mockUser = { id: "agent" }; mockRole = "agent";
+    const res = await middleware(new NextRequest("https://app.test/settings?tab=security"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+  it("blocks an agent from running a shared broadcast", async () => {
+    mockUser = { id: "agent" }; mockRole = "agent";
+    const res = await middleware(new NextRequest("https://app.test/api/whatsapp/broadcast", { method: "POST" }));
+    expect(res.status).toBe(403);
   });
 });

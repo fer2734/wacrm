@@ -45,7 +45,7 @@ export async function GET(
     // not their personal (non-existent) row.
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_id')
+      .select('account_id, account_role')
       .eq('user_id', user.id)
       .maybeSingle()
     const accountId = profile?.account_id as string | undefined
@@ -54,6 +54,12 @@ export async function GET(
         { error: t('common.profileNotLinked') },
         { status: 403 },
       )
+    }
+
+    if (profile?.account_role === 'agent') {
+      const { data: message } = await supabase.from('messages').select('id')
+        .eq('media_url', `/api/whatsapp/media/${mediaId}`).limit(1).maybeSingle()
+      if (!message) return NextResponse.json({ error: t('common.conversationNotFound') }, { status: 404 })
     }
 
     // Fetch and decrypt WhatsApp config

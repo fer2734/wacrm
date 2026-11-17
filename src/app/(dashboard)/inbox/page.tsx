@@ -14,6 +14,7 @@ import { ConversationList } from "@/components/inbox/conversation-list";
 import { parseInboxFilter } from "@/lib/inbox/inbox-filters";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ export default function InboxPage() {
 
 function InboxPageInner() {
   const t = useTranslations("Inbox.page");
+  const { user, isAgent } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   /**
@@ -66,6 +68,12 @@ function InboxPageInner() {
    * once on conversationId-change as usual.
    */
   const [resyncToken, setResyncToken] = useState(0);
+  // A reassignment can stop RLS-filtered realtime events for the old agent.
+  useEffect(() => {
+    if (!isAgent) return;
+    const timer = setInterval(() => setResyncToken((n) => n + 1), 15000);
+    return () => clearInterval(timer);
+  }, [isAgent]);
 
   /**
    * Whether the desktop contact sidebar (tags / deals / notes) is shown.
@@ -282,6 +290,15 @@ function InboxPageInner() {
       old: Partial<Conversation>;
     }) => {
       const conv = event.new;
+      if (isAgent && conv.assigned_agent_id !== user?.id) {
+        setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+        if (activeConversation?.id === conv.id) {
+          setActiveConversation(null);
+          setActiveContact(null);
+          setMessages([]);
+        }
+        return;
+      }
 
       if (event.eventType === "INSERT") {
         // Prepend immediately for snappy UX so the new conv shows in the
@@ -333,7 +350,7 @@ function InboxPageInner() {
         }
       }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, hydrateConversation, isAgent, user?.id]
   );
 
   // Subscribe to realtime. The `isConnected` flag below feeds the
@@ -402,6 +419,11 @@ function InboxPageInner() {
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
       setConversations(loaded);
+      if (isAgent && activeConversation && !loaded.some((c) => c.id === activeConversation.id)) {
+        setActiveConversation(null);
+        setActiveContact(null);
+        setMessages([]);
+      }
       // Resolve a pending deep-link here rather than in an effect — this
       // is an event handler, so the setState calls below are allowed by
       // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
@@ -442,7 +464,7 @@ function InboxPageInner() {
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id]
+    [deepLinkConvId, activeConversation, isAgent]
   );
 
   const handleSelectConversation = useCallback(
