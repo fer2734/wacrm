@@ -13,7 +13,7 @@ describe("system notification delivery", () => {
     vi.stubGlobal("window", { Notification: constructor });
     vi.stubGlobal("navigator", { serviceWorker: { register, ready: Promise.resolve({ showNotification }) } });
     await showBrowserNotification("Cliente", { body: "Hola", tag: "c1" }, "/inbox?c=c1");
-    expect(register).toHaveBeenCalledWith("/notifications-sw.js", { scope: "/" });
+    expect(register).toHaveBeenCalledWith("/crm-notifications-sw.js", { scope: "/" });
     expect(showNotification).toHaveBeenCalledWith("Cliente", { body: "Hola", tag: "c1", data: { href: "/inbox?c=c1" } });
     expect(constructor).not.toHaveBeenCalled();
   });
