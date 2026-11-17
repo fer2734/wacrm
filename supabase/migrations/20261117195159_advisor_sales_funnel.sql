@@ -109,30 +109,3 @@ END $$;
 REVOKE ALL ON FUNCTION public.set_conversation_stage(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.set_conversation_stage(uuid,uuid) TO authenticated;
 
--- Seed Valle's first sales pipeline without changing any existing pipeline.
-DO $$
-DECLARE v_pipeline uuid;
-BEGIN
-  IF EXISTS(SELECT 1 FROM public.accounts WHERE id = 'b16cd4cb-2330-444a-a97e-c4e11c2b104b')
-    AND NOT EXISTS(SELECT 1 FROM public.pipelines WHERE account_id = 'b16cd4cb-2330-444a-a97e-c4e11c2b104b') THEN
-    INSERT INTO public.pipelines(user_id,account_id,name)
-      VALUES ('f8a2cc7d-b65a-4b80-bbee-0b39d82ce936','b16cd4cb-2330-444a-a97e-c4e11c2b104b','Embudo de ventas') RETURNING id INTO v_pipeline;
-    INSERT INTO public.pipeline_stages(pipeline_id,name,color,position,deal_status) VALUES
-      (v_pipeline,'Nuevo lead','#3b82f6',0,'open'),
-      (v_pipeline,'Aún no responde','#eab308',1,'open'),
-      (v_pipeline,'Contactado','#06b6d4',2,'open'),
-      (v_pipeline,'Interesado / Potable','#8b5cf6',3,'open'),
-      (v_pipeline,'Propuesta enviada','#f97316',4,'open'),
-      (v_pipeline,'En seguimiento','#6366f1',5,'open'),
-      (v_pipeline,'Quiere venta directa','#0d9488',6,'open'),
-      (v_pipeline,'Venta concretada','#16a34a',7,'won'),
-      (v_pipeline,'No le interesa','#dc2626',8,'lost');
-    INSERT INTO public.deals(user_id,account_id,pipeline_id,stage_id,contact_id,conversation_id,assigned_to,title,currency)
-      SELECT c.user_id,c.account_id,v_pipeline,s.id,c.contact_id,c.id,c.assigned_agent_id,
-        COALESCE(NULLIF(ct.name,''),NULLIF(ct.phone,''),'Consulta de WhatsApp'),'ARS'
-      FROM public.conversations c JOIN public.contacts ct ON ct.id = c.contact_id
-      JOIN public.pipeline_stages s ON s.pipeline_id = v_pipeline AND s.position = 0
-      WHERE c.account_id = 'b16cd4cb-2330-444a-a97e-c4e11c2b104b'
-      ON CONFLICT (conversation_id,pipeline_id) WHERE conversation_id IS NOT NULL DO NOTHING;
-  END IF;
-END $$;

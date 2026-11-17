@@ -54,7 +54,7 @@ export default function PipelinesPage() {
   const supabase = createClient();
   const canEditSettings = useCan("edit-settings");
   const canCreateDeals = useCan("send-messages");
-  const { accountId, isAgent, user } = useAuth();
+  const { accountId, isAgent, profile } = useAuth();
   const sales = useTranslations("SalesFunnel");
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -321,7 +321,7 @@ export default function PipelinesPage() {
   }
 
   const visibleDeals = deals.filter(deal => {
-    if (isAgent && deal.assigned_to !== user?.id) return false;
+    if (isAgent && deal.assigned_to !== profile?.id) return false;
     if (!isAgent && advisor !== "all" && (advisor === "unassigned" ? !!deal.assigned_to : deal.assigned_to !== advisor)) return false;
     const needle = search.trim().toLocaleLowerCase();
     return !needle || [deal.title, deal.contact?.name, deal.contact?.phone, deal.assignee?.full_name].some(value => value?.toLocaleLowerCase().includes(needle));
@@ -426,7 +426,7 @@ export default function PipelinesPage() {
         <Input aria-label={sales("search")} placeholder={sales("search")} value={search} onChange={e => setSearch(e.target.value)} />
         {!isAgent && <select aria-label={sales("advisor")} value={advisor} onChange={e => setAdvisor(e.target.value)} className="h-11 w-full rounded-lg border border-input bg-card px-3 text-center text-base text-foreground">
           <option value="all">{sales("allAdvisors")}</option><option value="unassigned">{sales("unassigned")}</option>
-          {advisors.map(profile => <option key={profile.user_id} value={profile.user_id}>{profile.full_name || profile.email}</option>)}
+          {advisors.map(profile => <option key={profile.user_id} value={profile.id}>{profile.full_name || profile.email}</option>)}
         </select>}
       </div>
 
