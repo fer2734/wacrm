@@ -66,6 +66,12 @@ const THEME_BOOT_SCRIPT = `
 (function(){
   var d = document.documentElement;
   try {
+    var personal = JSON.parse(localStorage.getItem('wacrm.personal-style') || '{}');
+    d.style.fontSize = ([16,18,20,22].indexOf(Number(personal.fontSize)) !== -1 ? Number(personal.fontSize) : 16) + 'px';
+    function validColor(v){return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);}
+    function ink(hex){var rgb=[1,3,5].map(function(i){var c=parseInt(hex.slice(i,i+2),16)/255;return c<=.04045?c/12.92:Math.pow((c+.055)/1.055,2.4);});var l=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;return (l+.05)/.05>=1.05/(l+.05)?'#000000':'#ffffff';}
+    if(validColor(personal.accent)){d.style.setProperty('--primary',personal.accent);d.style.setProperty('--primary-foreground',ink(personal.accent));d.style.setProperty('--ring',personal.accent);}
+    if(validColor(personal.background)){['--background','--card','--card-2','--popover','--secondary','--muted','--accent','--sidebar'].forEach(function(k){d.style.setProperty(k,personal.background);});['--foreground','--card-foreground','--popover-foreground','--secondary-foreground','--muted-foreground','--accent-foreground','--sidebar-foreground','--sidebar-accent-foreground'].forEach(function(k){d.style.setProperty(k,ink(personal.background));});['--border','--input','--sidebar-border'].forEach(function(k){d.style.setProperty(k,'color-mix(in srgb, '+ink(personal.background)+' 25%, '+personal.background+')');});}
     var THEME_KEY = ${JSON.stringify(STORAGE_KEY)};
     var THEME_DEFAULT = ${JSON.stringify(DEFAULT_THEME)};
     var THEMES = ${JSON.stringify(THEME_IDS)};

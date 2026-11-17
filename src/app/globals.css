@@ -252,3 +252,17 @@ html[data-theme="rose"] {
   input, select, textarea, button { font-family: inherit; }
   select option { background: var(--popover); color: var(--popover-foreground); }
 }
+
+/* Text scaling must not widen the application or its forms. */
+@layer base {
+ html, body { max-width: 100%; }
+ main { min-width: 0; }
+ input, textarea, select { max-width: 100%; min-width: 0; }
+ textarea { overflow-wrap: anywhere; white-space: pre-wrap; }
+ input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]) { text-overflow: ellipsis; }
+ label { min-width: 0; overflow-wrap: anywhere; }
+}
+@layer base {
+ [class~="text-[10px]"] { font-size: .75rem; line-height: 1.35; }
+ [class~="text-[11px]"] { font-size: .8125rem; line-height: 1.35; }
+}

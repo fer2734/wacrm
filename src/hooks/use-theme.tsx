@@ -1,5 +1,6 @@
 "use client";
 
+import {resetPersonalColors} from "@/lib/appearance/personal";
 import {
   createContext,
   useCallback,
@@ -82,6 +83,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((next: ThemeId) => {
     setThemeState(next);
+    resetPersonalColors();
     if (typeof document !== "undefined") {
       document.documentElement.dataset.theme = next;
     }
@@ -95,6 +97,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setMode = useCallback((next: Mode) => {
     setModeState(next);
+    resetPersonalColors(true);
     if (typeof document !== "undefined") {
       document.documentElement.dataset.mode = next;
     }

@@ -42,7 +42,8 @@
     "menuProfile": "Profile",
     "menuSettings": "Settings",
     "menuSignOut": "Sign out",
-    "myPipeline": "My funnel"
+    "myPipeline": "My funnel",
+    "agenda": "My calendar"
   },
   "Header": {
     "dashboard": "Dashboard",
@@ -59,7 +60,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "agenda": "My calendar"
   },
   "ModeToggle": {
     "switchMode": "Switch to {mode} mode"

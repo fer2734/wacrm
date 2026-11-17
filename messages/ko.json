@@ -42,7 +42,8 @@
     "menuProfile": "프로필",
     "menuSettings": "설정",
     "menuSignOut": "로그아웃",
-    "myPipeline": "My funnel"
+    "myPipeline": "My funnel",
+    "agenda": "My calendar"
   },
   "Header": {
     "dashboard": "대시보드",
@@ -59,7 +60,8 @@
     "defaultAvatar": "아바타",
     "menuProfile": "프로필",
     "menuSettings": "설정",
-    "menuSignOut": "로그아웃"
+    "menuSignOut": "로그아웃",
+    "agenda": "My calendar"
   },
   "ModeToggle": {
     "switchMode": "{mode} 모드로 전환"

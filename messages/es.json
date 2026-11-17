@@ -42,7 +42,8 @@
     "menuProfile": "Perfil",
     "menuSettings": "Configuración",
     "menuSignOut": "Cerrar sesión",
-    "myPipeline": "Mi embudo"
+    "myPipeline": "Mi embudo",
+    "agenda": "Mi agenda"
   },
   "Header": {
     "dashboard": "Panel",
@@ -59,7 +60,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Perfil",
     "menuSettings": "Configuración",
-    "menuSignOut": "Cerrar sesión"
+    "menuSignOut": "Cerrar sesión",
+    "agenda": "Mi agenda"
   },
   "ModeToggle": {
     "switchMode": "Cambiar al modo {mode}"

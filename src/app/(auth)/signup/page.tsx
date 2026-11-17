@@ -50,6 +50,8 @@ function SignupPageInner() {
     e.preventDefault();
     setError(null);
 
+    if (!inviteToken || !/^[A-Za-z0-9_-]{43}$/.test(inviteToken)) { setError("Necesitás un enlace de invitación válido para registrarte."); return; }
+
     if (password !== confirmPassword) {
       setError(t("passwordsMismatch"));
       return;
@@ -83,6 +85,7 @@ function SignupPageInner() {
       options: {
         data: {
           full_name: fullName,
+          invitation_token: inviteToken,
         },
         emailRedirectTo,
       },
@@ -95,12 +98,14 @@ function SignupPageInner() {
     }
 
     if (data.session) {
-      window.location.href = next;
+      window.location.assign(next);
       return;
     }
     setSuccess(true);
     setLoading(false);
   };
+
+  if (!inviteToken || !/^[A-Za-z0-9_-]{43}$/.test(inviteToken)) return <div className="mx-auto max-w-md space-y-4 p-6 text-center"><h1 className="text-xl font-semibold">Registro solo por invitación</h1><p>Pedile al administrador un enlace de invitación. Si lo recibiste por email, abrí ese enlace para crear tu cuenta.</p><Link href="/login" className="text-primary underline">Volver a iniciar sesión</Link></div>;
 
   if (success) {
     return (

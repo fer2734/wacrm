@@ -35,9 +35,11 @@ function latestFunctionBody(functionName: string): string {
   const latest = migrations.filter(({ sql }) => header.test(sql)).at(-1);
   if (!latest) throw new Error(`${functionName} is not defined in any migration`);
   const start = latest.sql.search(header);
-  const bodyStart = latest.sql.indexOf("$$", start);
-  const bodyEnd = latest.sql.indexOf("$$", bodyStart + 2);
-  return latest.sql.slice(bodyStart + 2, bodyEnd);
+  const marker = latest.sql.slice(start).match(/\bas\s+(\$[a-zA-Z0-9_]*\$)/i);
+  if (!marker || marker.index === undefined) throw new Error(`Cannot find body for ${functionName}`);
+  const bodyStart = start + marker.index + marker[0].length;
+  const bodyEnd = latest.sql.indexOf(marker[1], bodyStart);
+  return latest.sql.slice(bodyStart, bodyEnd);
 }
 
 describe("redeem_invitation migration", () => {

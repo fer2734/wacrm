@@ -1,5 +1,6 @@
 "use client";
 
+import { PersonalAppearance } from "./personal-appearance";
 import { Check, Moon, Palette, SunMoon, Sun } from "lucide-react";
 
 import { useTheme } from "@/hooks/use-theme";
@@ -73,6 +74,7 @@ export function AppearancePanel() {
           ))}
         </div>
       </div>
+      <PersonalAppearance />
     </section>
   );
 }

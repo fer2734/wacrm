@@ -1,5 +1,6 @@
 "use client";
 
+import { AdvisorAgenda } from "@/components/agenda/advisor-agenda";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -9,6 +10,7 @@ import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
+  CalendarDays,
   Bot,
   Crown,
   GitBranch,
@@ -94,6 +96,7 @@ const navItems: NavItem[] = [
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
+  { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
@@ -209,7 +212,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.filter((item) => accountRole !== "agent" ||
-              ["/inbox", "/contacts", "/notifications", "/pipelines"].includes(item.href)).map((item) => {
+              ["/inbox", "/contacts", "/notifications", "/pipelines", "/agenda"].includes(item.href)).map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -292,6 +295,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               );
             })}
           </ul>
+          <div className="mt-4"><AdvisorAgenda compact /></div>
         </nav>
 
         {/* User section */}

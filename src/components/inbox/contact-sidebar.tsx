@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -216,6 +217,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
           {/* Divider */}
           <div className="my-4 border-t border-border" />
 
+          <Link href={`/agenda?contact=${encodeURIComponent(contact.id)}`} className="mb-4 flex min-h-11 items-center justify-center rounded-lg border border-border px-3 text-center text-sm font-semibold hover:bg-muted">Agendar llamada o entrevista</Link>
           {/* Active Deals */}
           <div>
             <div className="flex items-center gap-2 px-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">

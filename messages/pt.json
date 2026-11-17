@@ -42,7 +42,8 @@
     "menuProfile": "Perfil",
     "menuSettings": "Configurações",
     "menuSignOut": "Sair",
-    "myPipeline": "My funnel"
+    "myPipeline": "My funnel",
+    "agenda": "My calendar"
   },
   "Header": {
     "dashboard": "Painel",
@@ -59,7 +60,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Perfil",
     "menuSettings": "Configurações",
-    "menuSignOut": "Sair"
+    "menuSignOut": "Sair",
+    "agenda": "My calendar"
   },
   "ModeToggle": {
     "switchMode": "Mudar para o modo {mode}"
