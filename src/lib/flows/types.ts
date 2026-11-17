@@ -98,6 +98,7 @@ export interface SendMediaNodeConfig {
 }
 
 export interface HandoffNodeConfig {
+  round_robin?: boolean;
   /** Optional internal note written to flow_run_events.payload.note. */
   note?: string;
   /**

@@ -69,6 +69,7 @@ interface SendTextEngineArgs {
    *  for tenancy. */
   userId: string
   conversationId: string
+  stopWhenAssigned?: boolean
   contactId: string
   text: string
   /** Marks the persisted message row `ai_generated = true` so the inbox
@@ -124,6 +125,7 @@ export async function engineSendText(
   )
 
   const attempt = async (phone: string): Promise<string> => {
+    if (args.stopWhenAssigned || args.aiGenerated) await assertBotCanSend(db, args.accountId, args.conversationId)
     const r = await sendTextMessage({
       phoneNumberId,
       accessToken,
@@ -185,6 +187,7 @@ interface SendMediaEngineArgs {
   accountId: string
   userId: string
   conversationId: string
+  stopWhenAssigned?: boolean
   contactId: string
   kind: MediaKind
   /** Public URL Meta fetches at send time. */
@@ -238,6 +241,7 @@ export async function engineSendMedia(
   )
 
   const attempt = async (phone: string): Promise<string> => {
+    if (args.stopWhenAssigned) await assertBotCanSend(db, args.accountId, args.conversationId)
     const r = await sendMediaMessage({
       phoneNumberId,
       accessToken,
@@ -306,6 +310,7 @@ interface SendInteractiveButtonsEngineArgs {
   accountId: string
   userId: string
   conversationId: string
+  stopWhenAssigned?: boolean
   contactId: string
   bodyText: string
   buttons: InteractiveButton[]
@@ -317,6 +322,7 @@ interface SendInteractiveListEngineArgs {
   accountId: string
   userId: string
   conversationId: string
+  stopWhenAssigned?: boolean
   contactId: string
   bodyText: string
   buttonLabel: string
@@ -394,6 +400,7 @@ async function sendInteractiveViaMeta(
   )
 
   const attempt = async (phone: string): Promise<string> => {
+    if (input.stopWhenAssigned) await assertBotCanSend(db, input.accountId, input.conversationId)
     if (input.kind === 'buttons') {
       const r = await sendInteractiveButtons({
         phoneNumberId,
@@ -497,4 +504,9 @@ async function sendInteractiveViaMeta(
     .eq('account_id', input.accountId)
 
   return { whatsapp_message_id: waMessageId }
+}
+
+async function assertBotCanSend(db: ReturnType<typeof supabaseAdmin>, accountId: string, conversationId: string) {
+  const { data, error } = await db.from('conversations').select('assigned_agent_id,ai_autoreply_disabled').eq('id',conversationId).eq('account_id',accountId).maybeSingle();
+  if (error || !data || data.assigned_agent_id || data.ai_autoreply_disabled) throw new Error('Bot stopped: conversation belongs to a human');
 }

@@ -1,3 +1,4 @@
+import { openingVehicle } from "./valle-sales";
 /**
  * Flow runner.
  *
@@ -419,6 +420,7 @@ async function sendButtonsAndSuspend(
     accountId: run.account_id,
     userId: run.user_id,
     conversationId: run.conversation_id!,
+          stopWhenAssigned: true,
     contactId: run.contact_id!,
     bodyText: interpolateVars(cfg.text, run.vars),
     headerText: interpolateOptionalVars(cfg.header_text, run.vars),
@@ -460,6 +462,7 @@ async function sendListAndSuspend(
     accountId: run.account_id,
     userId: run.user_id,
     conversationId: run.conversation_id!,
+          stopWhenAssigned: true,
     contactId: run.contact_id!,
     bodyText: interpolateVars(cfg.text, run.vars),
     buttonLabel: interpolateVars(cfg.button_label, run.vars),
@@ -497,7 +500,14 @@ async function executeHandoff(
   run: FlowRunRow,
   node: FlowNodeRow,
 ): Promise<void> {
-  const cfg = node.config as { assign_to?: string; note?: string };
+  const cfg = node.config as { assign_to?: string; note?: string; round_robin?: boolean };
+  if (cfg.round_robin && run.conversation_id) {
+    const summary = interpolateVars(cfg.note ?? "Lead derivado al asesor", run.vars);
+    const { error } = await db.rpc("assign_next_sales_agent", { p_account_id: run.account_id, p_conversation_id: run.conversation_id, p_summary: summary });
+    if (error) throw new Error(error.message);
+    await endRun(db, run.id, "handed_off", "round_robin_assignment");
+    return;
+  }
   const convUpdate: Record<string, unknown> = {
     status: "pending",
     updated_at: new Date().toISOString(),
@@ -662,6 +672,7 @@ async function advanceFromNodeKey(
           accountId: run.account_id,
     userId: run.user_id,
           conversationId: run.conversation_id!,
+          stopWhenAssigned: true,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.text, run.vars),
         });
@@ -687,6 +698,7 @@ async function advanceFromNodeKey(
           accountId: run.account_id,
     userId: run.user_id,
           conversationId: run.conversation_id!,
+          stopWhenAssigned: true,
           contactId: run.contact_id!,
           kind: cfg.media_type,
           link: cfg.media_url,
@@ -720,6 +732,7 @@ async function advanceFromNodeKey(
           accountId: run.account_id,
     userId: run.user_id,
           conversationId: run.conversation_id!,
+          stopWhenAssigned: true,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.prompt_text, run.vars),
         });
@@ -991,6 +1004,9 @@ export async function dispatchInboundToFlows(
   const db = supabaseAdmin();
   let ownedRunId: string | null = null;
   try {
+    const { data: human, error: humanError } = await db.from("conversations").select("assigned_agent_id,ai_autoreply_disabled").eq("id", input.conversationId).eq("account_id",input.accountId).maybeSingle();
+    if (humanError) return { consumed: true, outcome: "run_error" };
+    if (human?.assigned_agent_id || human?.ai_autoreply_disabled) return { consumed: true, outcome: "handed_off" };
     const activeRun = await loadActiveRunForContact(
       db,
       input.accountId,
@@ -1086,6 +1102,11 @@ async function handleReplyForActiveRun(
     text_length: message.kind === "text" ? message.text.length : null,
   });
 
+  if ((flow.trigger_config as Record<string, unknown>).sales_intake === true &&
+      message.kind === "text" && (!message.text.trim() || /(?:asesor|vendedor|persona|humano|llama|no entiendo)/i.test(message.text))) {
+    await executeHandoff(db, run, { node_key: "human_request", config: { round_robin: true, note: "Solicitud de atención humana. Datos capturados: " + JSON.stringify(run.vars) } } as unknown as FlowNodeRow);
+    return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
+  }
   const currentNode = nodes.get(run.current_node_key!)!;
 
   // Two ways a reply can advance:
@@ -1184,6 +1205,7 @@ async function handleReplyForActiveRun(
           accountId: run.account_id,
           userId: run.user_id,
           conversationId: run.conversation_id!,
+          stopWhenAssigned: true,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.prompt_text, run.vars),
         });
@@ -1197,6 +1219,10 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "fallback_fired" };
   }
   if (action.type === "handoff") {
+    if ((flow.trigger_config as Record<string, unknown>).sales_intake === true) {
+      await executeHandoff(db, run, { node_key: "fallback", config: { round_robin: true, note: "Derivación por respuesta no reconocida. Datos: " + JSON.stringify(run.vars) } } as unknown as FlowNodeRow);
+      return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
+    }
     if (run.conversation_id) {
       await db
         .from("conversations")
@@ -1277,6 +1303,7 @@ async function startNewRun(
       conversation_id: input.conversationId,
       status: "active",
       current_node_key: flow.entry_node_id,
+      ...((flow.trigger_config as Record<string, unknown>).sales_intake === true ? { vars: { initial_message: input.message.kind === "text" ? input.message.text : input.message.reply_title, ...(input.message.kind === "text" && openingVehicle(input.message.text) ? { vehiculo: openingVehicle(input.message.text) } : {}) } } : {}),
     })
     .select("*")
     .maybeSingle();
@@ -1312,7 +1339,8 @@ async function startNewRun(
   }
 
   // Run the advance loop starting from the entry node.
-  const outcome = await advanceFromNodeKey(db, run, flow.entry_node_id!, nodes);
+  const intakeEntry = (flow.trigger_config as Record<string, unknown>).sales_intake === true && run.vars.vehiculo ? "resources" : flow.entry_node_id!;
+  const outcome = await advanceFromNodeKey(db, run, intakeEntry, nodes);
   return {
     consumed: true,
     flow_run_id: run.id,

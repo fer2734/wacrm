@@ -860,17 +860,13 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'assign_conversation': {
       const cfg = step.step_config as AssignConversationStepConfig
       if (!args.contactId) throw new Error(tErr('needsContact', { step: 'assign_conversation' }))
-      let agentId = cfg.agent_id
+      const agentId = cfg.agent_id
       if (cfg.mode === 'round_robin') {
-        // Pick any member of the account. The existing implementation
-        // only ever returned the automation's author; preserving that
-        // shape until a real round-robin algorithm replaces it.
-        const { data: profiles } = await db
-          .from('profiles')
-          .select('user_id')
-          .eq('account_id', args.automation.account_id)
-          .limit(1)
-        agentId = profiles?.[0]?.user_id
+        const { data: conversation } = await db.from('conversations').select('id').eq('account_id',args.automation.account_id).eq('contact_id',args.contactId).maybeSingle();
+        if (!conversation) return 'no conversation';
+        const { data, error } = await db.rpc('assign_next_sales_agent', { p_account_id: args.automation.account_id, p_conversation_id: conversation.id });
+        if (error) throw new Error(error.message);
+        return `assigned to ${data}`;
       }
       if (!agentId) return 'no agent resolved'
       await db
