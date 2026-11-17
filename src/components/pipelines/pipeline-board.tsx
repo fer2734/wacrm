@@ -119,6 +119,8 @@ export function PipelineBoard({
               currency={defaultCurrency}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              stages={sortedStages}
+              onDealMoved={onDealMoved}
             />
           );
         })}
@@ -187,6 +189,7 @@ export function PipelineBoard({
 }
 
 function StageColumn({
+  stages, onDealMoved,
   stage,
   deals,
   totalValue,
@@ -194,6 +197,8 @@ function StageColumn({
   onAddDeal,
   onEditDeal,
 }: {
+  stages: PipelineStage[];
+  onDealMoved: (dealId: string, stageId: string) => void;
   stage: PipelineStage;
   deals: Deal[];
   totalValue: number;
@@ -218,7 +223,7 @@ function StageColumn({
         style={{ backgroundColor: stage.color }}
       />
       <div className="flex items-center justify-between pt-3">
-        <h3 className="truncate text-sm font-semibold text-foreground">
+        <h3 className="min-w-0 flex-1 text-center text-base font-semibold leading-snug text-foreground">
           {stage.name}
         </h3>
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -248,6 +253,8 @@ function StageColumn({
               deal={deal}
               stage={stage}
               onEdit={onEditDeal}
+              stages={stages}
+              onDealMoved={onDealMoved}
             />
           ))
         )}
@@ -257,7 +264,7 @@ function StageColumn({
         variant="ghost"
         size="sm"
         onClick={() => onAddDeal(stage.id)}
-        className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
+        className="mt-3 w-full justify-center border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
       >
         <Plus className="mr-1 h-3 w-3" />
         {t("addDeal")}
@@ -267,14 +274,18 @@ function StageColumn({
 }
 
 function DraggableDealCard({
+  stages, onDealMoved,
   deal,
   stage,
   onEdit,
 }: {
+  stages: PipelineStage[];
+  onDealMoved: (dealId: string, stageId: string) => void;
   deal: Deal;
   stage: PipelineStage;
   onEdit: (deal: Deal) => void;
 }) {
+  const sales = useTranslations("SalesFunnel");
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
   });
@@ -287,6 +298,12 @@ function DraggableDealCard({
       style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
     >
       <DealCard deal={deal} stage={stage} onEdit={onEdit} />
+      <select aria-label={sales("stageFor", { name: deal.title })} value={deal.stage_id}
+        onPointerDown={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}
+        onChange={event => onDealMoved(deal.id, event.target.value)}
+        className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-2 text-center text-sm font-medium text-foreground">
+        {stages.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>
     </div>
   );
 }

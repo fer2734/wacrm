@@ -1,5 +1,7 @@
 "use client";
 
+import { ConversationStage } from "./conversation-stage";
+
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -1190,6 +1192,8 @@ export function MessageThread({
           </DropdownMenu>}
         </div>
       </div>
+
+      <ConversationStage key={conversation.id} conversationId={conversation.id} />
 
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">

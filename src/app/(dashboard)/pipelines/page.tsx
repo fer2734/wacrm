@@ -6,7 +6,8 @@ import type { Pipeline, PipelineStage, Deal } from "@/types";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineSettings } from "@/components/pipelines/pipeline-settings";
 import { DealForm } from "@/components/pipelines/deal-form";
-import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
+import { useRouter } from "next/navigation";
+import type { Profile } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -53,7 +54,19 @@ export default function PipelinesPage() {
   const supabase = createClient();
   const canEditSettings = useCan("edit-settings");
   const canCreateDeals = useCan("send-messages");
-  const { accountId } = useAuth();
+  const { accountId, isAgent, user } = useAuth();
+  const sales = useTranslations("SalesFunnel");
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [advisor, setAdvisor] = useState("all");
+  const [advisors, setAdvisors] = useState<Profile[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (accountId && !isAgent) void supabase.from("profiles").select("*").eq("account_id", accountId).then(({ data }) => {
+      if (!cancelled) setAdvisors(data ?? []);
+    });
+    return () => { cancelled = true; };
+  }, [supabase, accountId, isAgent]);
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
@@ -150,7 +163,7 @@ export default function PipelinesPage() {
       setLoading(true);
       let list = await loadPipelines();
 
-      if (list.length === 0 && accountId && !seedAttempted.current) {
+      if (list.length === 0 && accountId && canEditSettings && !seedAttempted.current) {
         seedAttempted.current = true;
         const seeded = await seedDefaultPipeline();
         if (seeded) list = await loadPipelines();
@@ -170,7 +183,7 @@ export default function PipelinesPage() {
     return () => {
       cancelled = true;
     };
-  }, [loadPipelines, seedDefaultPipeline, accountId]);
+  }, [loadPipelines, seedDefaultPipeline, accountId, canEditSettings]);
 
   // Load stages + deals whenever selected pipeline changes.
   // Clearing on no-selection is a legitimate sync with URL/prop
@@ -217,11 +230,19 @@ export default function PipelinesPage() {
     setDeals(await loadDeals(selectedPipelineId));
   }, [loadDeals, selectedPipelineId]);
 
+  useEffect(() => {
+    if (!selectedPipelineId) return;
+    const timer = window.setInterval(() => void refreshDeals(), 15000);
+    const refresh = () => void refreshDeals();
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [selectedPipelineId, refreshDeals]);
+
   const handleDealMoved = useCallback(
     async (dealId: string, newStageId: string) => {
       // Optimistic update — board already animated; just persist.
       setDeals((prev) =>
-        prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId } : d)),
+        prev.map((d) => (d.id === dealId ? { ...d, stage_id: newStageId, status: stages.find(s => s.id === newStageId)?.deal_status ?? d.status } : d)),
       );
       const { error } = await supabase
         .from("deals")
@@ -232,7 +253,7 @@ export default function PipelinesPage() {
         refreshDeals();
       }
     },
-    [supabase, refreshDeals, t],
+    [supabase, refreshDeals, t, stages],
   );
 
   const handleAddDeal = useCallback(
@@ -245,10 +266,11 @@ export default function PipelinesPage() {
   );
 
   const handleEditDeal = useCallback((deal: Deal) => {
+    if (deal.conversation_id) { router.push(`/inbox?c=${encodeURIComponent(deal.conversation_id)}`); return; }
     setEditingDeal(deal);
     setDefaultStageId(deal.stage_id);
     setDealFormOpen(true);
-  }, []);
+  }, [router]);
 
   async function handleCreatePipeline() {
     const name = newPipelineName.trim();
@@ -298,6 +320,12 @@ export default function PipelinesPage() {
     toast.success(t("toastPipelineCreated"));
   }
 
+  const visibleDeals = deals.filter(deal => {
+    if (isAgent && deal.assigned_to !== user?.id) return false;
+    if (!isAgent && advisor !== "all" && (advisor === "unassigned" ? !!deal.assigned_to : deal.assigned_to !== advisor)) return false;
+    const needle = search.trim().toLocaleLowerCase();
+    return !needle || [deal.title, deal.contact?.name, deal.contact?.phone, deal.assignee?.full_name].some(value => value?.toLocaleLowerCase().includes(needle));
+  });
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
 
   if (loading) {
@@ -317,7 +345,9 @@ export default function PipelinesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-5">
+      <div><h1 className="text-2xl font-bold text-foreground">{isAgent ? sales("myFunnel") : sales("title")}</h1>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{isAgent ? sales("agentHint") : sales("teamHint")}</p></div>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -356,7 +386,7 @@ export default function PipelinesPage() {
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator className="bg-border" />
-              {selectedPipeline && (
+              {selectedPipeline && canEditSettings && (
                 <DropdownMenuItem
                   onClick={() => setSettingsOpen(true)}
                   className="text-popover-foreground"
@@ -369,7 +399,7 @@ export default function PipelinesPage() {
           </DropdownMenu>
         </div>
 
-        <div className="flex items-center gap-2">
+        {!isAgent && <div className="flex flex-wrap items-center gap-2">
           <GatedButton
             variant="outline"
             canAct={canEditSettings}
@@ -390,7 +420,14 @@ export default function PipelinesPage() {
             <Plus className="mr-1 h-4 w-4" />
             {t("addDeal")}
           </GatedButton>
-        </div>
+        </div>}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input aria-label={sales("search")} placeholder={sales("search")} value={search} onChange={e => setSearch(e.target.value)} />
+        {!isAgent && <select aria-label={sales("advisor")} value={advisor} onChange={e => setAdvisor(e.target.value)} className="h-11 w-full rounded-lg border border-input bg-card px-3 text-center text-base text-foreground">
+          <option value="all">{sales("allAdvisors")}</option><option value="unassigned">{sales("unassigned")}</option>
+          {advisors.map(profile => <option key={profile.user_id} value={profile.user_id}>{profile.full_name || profile.email}</option>)}
+        </select>}
       </div>
 
       {/* Board */}
@@ -415,10 +452,13 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={deals} />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {([['total', visibleDeals.length], ['open', visibleDeals.filter(d => d.status === 'open').length], ['won', visibleDeals.filter(d => d.status === 'won').length], ['lost', visibleDeals.filter(d => d.status === 'lost').length]] as const).map(([label,count]) =>
+              <div key={label} className="rounded-xl border border-border bg-card p-4 text-center"><p className="text-2xl font-bold text-foreground">{count}</p><p className="mt-1 text-sm font-medium text-muted-foreground">{sales(label)}</p></div>)}
+          </div>
           <PipelineBoard
             stages={stages}
-            deals={deals}
+            deals={visibleDeals}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}

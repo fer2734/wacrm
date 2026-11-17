@@ -209,7 +209,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.filter((item) => accountRole !== "agent" ||
-              ["/inbox", "/contacts", "/notifications"].includes(item.href)).map((item) => {
+              ["/inbox", "/contacts", "/notifications", "/pipelines"].includes(item.href)).map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -237,7 +237,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{t(item.labelKey as string)}</span>
+                    <span className="flex-1">{item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : t(item.labelKey as string)}</span>
                     {item.beta && (
                       <span
                         aria-label={t("beta")}

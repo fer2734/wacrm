@@ -55,7 +55,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
       />
 
       <div className="flex items-start justify-between gap-2">
-        <h4 className="flex-1 text-sm font-semibold leading-snug text-foreground break-words">
+        <h4 className="flex-1 text-base font-semibold leading-snug text-foreground break-words">
           {deal.title}
         </h4>
         {deal.status === "won" && (
@@ -77,7 +77,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
           {initials(deal.contact?.name, deal.contact?.phone)}
         </span>
-        <span className="truncate text-xs text-muted-foreground">{contactLabel}</span>
+        <span className="truncate text-sm text-muted-foreground">{contactLabel}</span>
       </div>
 
       <div className="mt-2 flex items-center justify-between">
@@ -96,9 +96,9 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         <div className="mt-2 flex items-center justify-end">
           <span
             title={assigneeLabel}
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary"
+            className="flex min-h-7 max-w-full items-center justify-center rounded-full bg-primary/15 px-2 text-xs font-semibold text-primary"
           >
-            {initials(assigneeLabel)}
+            {assigneeLabel}
           </span>
         </div>
       )}
