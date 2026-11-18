@@ -10,6 +10,7 @@ import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
   Bot,
+  CalendarDays,
   Crown,
   GitBranch,
   LayoutDashboard,
@@ -90,6 +91,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
