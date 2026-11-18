@@ -55,14 +55,21 @@ export function ConversationStage({ conversationId }: { conversationId: string }
 
   return (
     <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-border bg-card px-3 py-2.5">
-      <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+      <label htmlFor={`sales-stage-${conversationId}`} className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <GitBranch className="size-4 text-primary" />{t("stage")}
-      </span>
+      </label>
       {(loading || saving) && <Loader2 className="size-4 animate-spin" aria-label={t("saving")} />}
-      <div className="grid w-full grid-cols-3 gap-1 sm:flex sm:flex-wrap sm:justify-center">
-        {stages.map(stage=><button key={stage.id} type="button" disabled={loading||saving||failed} aria-pressed={stageId===stage.id} onClick={()=>void changeStage(stage.id)} className={`min-h-8 min-w-0 rounded-md border px-2 py-1 text-center text-xs font-medium leading-tight ${stageId===stage.id?'border-primary bg-primary text-primary-foreground':'border-border bg-background text-foreground hover:bg-muted'}`}>{stage.name}</button>)}
-        {failed&&<p className="col-span-3 text-xs">{t('loadFailed')}</p>}
-      </div>
+      <select
+        id={`sales-stage-${conversationId}`}
+        value={stageId}
+        disabled={loading || saving || failed || stages.length === 0}
+        onChange={(event) => void changeStage(event.target.value)}
+        className="h-9 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:w-64"
+      >
+        {!stageId && <option value="" disabled>{loading ? t("loading") : t("chooseStage")}</option>}
+        {stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+      </select>
+      {failed && <p role="alert" className="w-full text-center text-xs">{t("loadFailed")}</p>}
     </div>
   );
 }
