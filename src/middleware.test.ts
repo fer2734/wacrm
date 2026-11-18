@@ -70,9 +70,9 @@ describe("middleware — refreshed auth cookies survive redirects", () => {
       new NextRequest("https://app.test/login"),
     );
 
-    // Redirect to /dashboard…
+    // The landing page is the advisor agenda.
     expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toContain("/dashboard");
+    expect(res.headers.get("location")).toContain("/agenda");
     // …and the rotated cookie MUST ride along, otherwise the browser keeps
     // replaying the now-consumed refresh token and the session wedges until
     // the user manually clears cookies.
@@ -132,7 +132,7 @@ describe("middleware — every dashboard route requires a session", () => {
     .map((entry) => `/${entry.name}`);
 
   it("finds the dashboard route group", () => {
-    expect(dashboardRoutes).toContain("/dashboard");
+    expect(dashboardRoutes).toContain("/agenda");
   });
 
   it.each(dashboardRoutes)("redirects a signed-out visitor from %s to /login", async (route) => {
@@ -158,10 +158,10 @@ describe("team onboarding and assigned-agent navigation", () => {
     const res = await middleware(new NextRequest("https://app.test/dashboard", { headers: { cookie: `wacrm_invitation=${token}` } }));
     expect(res.headers.get("location")).toContain(`/join/${token}`);
   });
-  it("clears a used invitation and opens the agent inbox", async () => {
+  it("clears a used invitation and opens the agent agenda", async () => {
     mockUser = { id: "agent" }; mockRole = "agent"; mockInviteOk = false;
     const res = await middleware(new NextRequest("https://app.test/dashboard", { headers: { cookie: `wacrm_invitation=${token}` } }));
-    expect(res.headers.get("location")).toContain("/inbox");
+    expect(res.headers.get("location")).toContain("/agenda");
     expect(res.cookies.get("wacrm_invitation")?.value).toBe("");
   });
   it("sends agents away from WhatsApp setup", async () => {

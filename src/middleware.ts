@@ -83,7 +83,7 @@ export async function middleware(request: NextRequest) {
         personalSettings.includes(request.nextUrl.searchParams.get('tab') ?? '')
       if (!allowedSettings) {
         const url = request.nextUrl.clone()
-        url.pathname = pathname === '/settings' ? '/settings' : '/inbox'
+        url.pathname = pathname === '/settings' ? '/settings' : '/agenda'
         url.search = pathname === '/settings' ? '?tab=profile' : ''
         return withRefreshedCookies(NextResponse.redirect(url))
       }
@@ -111,7 +111,7 @@ export async function middleware(request: NextRequest) {
       url.pathname = `/join/${encodeURIComponent(inviteToken)}`
       url.search = ''
     } else {
-      url.pathname = '/dashboard'
+      url.pathname = '/agenda'
       url.search = ''
     }
     return withRefreshedCookies(NextResponse.redirect(url))

@@ -4,7 +4,7 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const target = new URL(event.notification.data?.href || "/inbox", self.location.origin);
-  if (target.origin !== self.location.origin || !target.pathname.startsWith("/inbox")) return;
+  if (target.origin !== self.location.origin || !(target.pathname.startsWith("/inbox") || target.pathname === "/agenda")) return;
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     const client = windows.find((item) => new URL(item.url).origin === self.location.origin);

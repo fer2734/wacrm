@@ -1,0 +1,33 @@
+"use client";
+import {useEffect,useState} from 'react';
+import {toast} from 'sonner';
+import {createClient} from '@/lib/supabase/client';
+import {useAuth} from '@/hooks/use-auth';
+import {dayKey,monthDays} from '@/lib/agenda/dates';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {Textarea} from '@/components/ui/textarea';
+import {Dialog,DialogContent,DialogHeader,DialogTitle} from '@/components/ui/dialog';
+import {Popover,PopoverContent,PopoverTrigger} from '@/components/ui/popover';
+import {CalendarDays,ChevronLeft,ChevronRight} from 'lucide-react';
+export const TASK_KINDS:Record<string,string>={call:'Llamada',interview:'Entrevista presencial',video:'Videollamada',task:'Tarea'};
+export interface AgendaTask{id:string;title:string;kind:string;starts_at:string;duration_minutes:number;client_name:string;client_phone:string;notes:string;completed:boolean;contact_id:string|null}
+export function taskTitle(task:Pick<AgendaTask,'title'|'kind'>){const kind=TASK_KINDS[task.kind]??'Actividad';return task.title===kind?kind:`${kind} · ${task.title}`}
+function dateInput(value:string){const match=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);return match?`${match[3]}-${match[2]}-${match[1]}`:value}
+export function TaskEditor({open,onOpenChange,task,day,contact}:{open:boolean;onOpenChange:(v:boolean)=>void;task?:AgendaTask|null;day?:string;contact?:{id:string;name?:string|null;phone?:string|null}|null}){
+ const {user,accountId}=useAuth();const [title,setTitle]=useState('');const [kind,setKind]=useState('call');const [date,setDate]=useState('');const [time,setTime]=useState('09:00');const [details,setDetails]=useState('');const [saving,setSaving]=useState(false);const [month,setMonth]=useState(new Date());const [calendarOpen,setCalendarOpen]=useState(false);
+ // Opening an editor intentionally resets its draft fields.
+ // eslint-disable-next-line react-hooks/set-state-in-effect
+ useEffect(()=>{if(!open)return;const when=task?new Date(task.starts_at):new Date(`${day??dayKey(new Date())}T09:00`);setTitle(task?.title??'');setKind(task?.kind??'call');setDate(dayKey(when));setMonth(when);setTime(`${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`);setDetails(task?[task.client_name,task.client_phone,task.notes].filter(Boolean).join('\n'):[contact?.name,contact?.phone].filter(Boolean).join('\n'));
+ // Reset fields on opening a dialog, not while editing.
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[open,task?.id]);
+ async function save(){if(!user||!accountId||saving)return;const dateValue=dateInput(date.trim())||dayKey(new Date());const when=new Date(`${dateValue}T${time||'09:00'}`);if(Number.isNaN(when.getTime())||dayKey(when)!==dateValue){toast.error('Revisá la fecha: DD/MM/AAAA o AAAA-MM-DD');return}setSaving(true);
+ const payload={title:title.trim()||TASK_KINDS[kind],kind,starts_at:when.toISOString(),notes:details.trim(),client_name:'',client_phone:'',contact_id:task?.contact_id??contact?.id??null};
+ const {error}=task?await createClient().from('advisor_tasks').update(payload).eq('id',task.id).eq('user_id',user.id):await createClient().from('advisor_tasks').insert({...payload,user_id:user.id,account_id:accountId});setSaving(false);if(error){toast.error('No se pudo guardar la actividad');return}onOpenChange(false);window.dispatchEvent(new Event('wacrm-agenda-changed'));toast.success('Actividad guardada con alarma');}
+ return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[88dvh] max-w-sm overflow-y-auto p-4"><DialogHeader><DialogTitle>{task?'Editar':'Agendar'} {TASK_KINDS[kind].toLowerCase()}{title.trim()?` · ${title}`:''}</DialogTitle></DialogHeader>
+ <div className="grid gap-2.5"><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><label className="grid gap-1 text-xs">Tipo<select aria-label="Tipo de actividad" value={kind} onChange={e=>setKind(e.target.value)} className="min-h-9 min-w-0 rounded-lg border border-input bg-background px-2 text-sm">{Object.entries(TASK_KINDS).map(([v,label])=><option key={v} value={v}>{label}</option>)}</select></label><label className="grid gap-1 text-xs">Título opcional<Input className="min-h-9 text-sm" value={title} maxLength={180} onChange={e=>setTitle(e.target.value)} placeholder="Opcional"/></label></div>
+ <div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><label className="grid min-w-0 gap-1 text-xs">Fecha<div className="flex min-w-0 gap-1"><Input aria-label="Fecha de actividad" className="min-h-9 text-sm" value={date} placeholder="DD/MM/AAAA" onChange={e=>setDate(e.target.value)}/><Popover open={calendarOpen} onOpenChange={setCalendarOpen}><PopoverTrigger aria-label="Elegir fecha en calendario" className="flex size-9 shrink-0 items-center justify-center rounded border border-input"><CalendarDays className="size-4"/></PopoverTrigger><PopoverContent className="w-64 p-3"><div className="mb-2 flex items-center justify-between"><button aria-label="Mes anterior" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1))}><ChevronLeft className="size-4"/></button><span className="text-sm">{month.toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</span><button aria-label="Mes siguiente" onClick={()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1))}><ChevronRight className="size-4"/></button></div><div className="grid grid-cols-7 text-center text-xs">{['L','M','M','J','V','S','D'].map((d,i)=><span key={i}>{d}</span>)}{monthDays(month).map(d=><button key={dayKey(d)} className={`min-h-8 rounded ${dayKey(d)===dateInput(date)?'bg-primary text-primary-foreground':'hover:bg-muted'}`} onClick={()=>{setDate(dayKey(d));setCalendarOpen(false)}}>{d.getDate()}</button>)}</div></PopoverContent></Popover></div></label>
+ <label className="grid gap-1 text-xs">Hora (24 h)<Input aria-label="Hora de actividad" className="min-h-9 text-sm" list="activity-hours" value={time} onChange={e=>setTime(e.target.value)} placeholder="HH:MM"/><datalist id="activity-hours">{Array.from({length:96},(_,i)=>`${String(Math.floor(i/4)).padStart(2,'0')}:${String(i%4*15).padStart(2,'0')}`).map(h=><option key={h} value={h}/>)}</datalist></label></div>
+ <label className="grid gap-1 text-xs">Contacto, teléfono y notas<Textarea className="min-h-20 text-sm" rows={3} value={details} onChange={e=>setDetails(e.target.value)} placeholder="Datos del cliente, teléfono, enlace o notas. Todo es opcional."/></label><p className="text-xs text-muted-foreground">⏰ Todas las actividades incluyen alarma. Si dejás fecha u hora vacías, se usarán hoy y las 09:00.</p><Button disabled={saving} onClick={()=>void save()}>{saving?'Guardando…':'Guardar'}</Button></div></DialogContent></Dialog>;
+}

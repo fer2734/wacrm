@@ -1,5 +1,8 @@
 "use client";
 
+import {ContactAliasesProvider} from "@/hooks/use-contact-aliases";
+import {LoadSavedAppearance} from "@/components/settings/saved-appearance";
+import {AgendaAlarmListener} from "@/components/agenda/agenda-alarm-listener";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -47,6 +50,8 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Reports this tab's online/away presence once we know a user is
           signed in. Headless — renders nothing. */}
+      <LoadSavedAppearance />
+      <AgendaAlarmListener />
       <PresenceHeartbeat />
       {/* Desktop alerts for new customer messages (opt-in via Settings →
           Your profile). Headless — renders nothing. */}
@@ -69,7 +74,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <DashboardShellInner>{children}</DashboardShellInner>
+      <ContactAliasesProvider><DashboardShellInner>{children}</DashboardShellInner></ContactAliasesProvider>
     </AuthProvider>
   );
 }

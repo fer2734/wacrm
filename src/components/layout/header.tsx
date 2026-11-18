@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
+import { CalendarDays, LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
 import {
   Avatar,
   AvatarFallback,
@@ -75,6 +75,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">
+        <Link href="/agenda" className="flex min-h-9 items-center gap-1 rounded-lg px-2 text-sm hover:bg-muted"><CalendarDays className="size-4"/>Agenda</Link>
         <ModeToggle />
 
         <DropdownMenu>

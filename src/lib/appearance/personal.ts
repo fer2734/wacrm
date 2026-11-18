@@ -2,7 +2,7 @@ export const PERSONAL_STYLE_KEY='wacrm.personal-style';
 export interface PersonalStyle {fontSize:number;accent:string|null;background:string|null}
 export const DEFAULT_PERSONAL_STYLE:PersonalStyle={fontSize:16,accent:null,background:null};
 export function color(value:unknown):string|null{return typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value)?value:null}
-export function normalizePersonalStyle(value:unknown):PersonalStyle{const row=value&&typeof value==='object'?value as Partial<PersonalStyle>:{};return {fontSize:[16,18,20,22].includes(Number(row.fontSize))?Number(row.fontSize):16,accent:color(row.accent),background:color(row.background)}}
+export function normalizePersonalStyle(value:unknown):PersonalStyle{const row=value&&typeof value==='object'?value as Partial<PersonalStyle>:{};return {fontSize:[12,14,16,18,20,22].includes(Number(row.fontSize))?Number(row.fontSize):16,accent:color(row.accent),background:color(row.background)}}
 export function foreground(hex:string):string{
  const channels=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255).map(c=>c<=.04045?c/12.92:Math.pow((c+.055)/1.055,2.4));
  const light=channels[0]*.2126+channels[1]*.7152+channels[2]*.0722;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -19,7 +19,6 @@ import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 
 interface PipelineBoardProps {
@@ -103,7 +102,7 @@ export function PipelineBoard({
           natural layout. The board can still overflow horizontally on
           lg+ once a pipeline has many stages (columns keep a 260px
           min-width), so a thin scrollbar stays visible on desktop. */}
-      <div className="pipeline-scroll flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 lg:snap-none">
+      <div className="sales-board grid min-w-0 grid-cols-3 gap-2 pb-4" style={{"--sales-stage-count":sortedStages.length} as CSSProperties}>
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
           const totalValue = stageDeals.reduce(
@@ -147,6 +146,7 @@ export function PipelineBoard({
       </DragOverlay>
 
       <style jsx>{`
+        @media(min-width:1024px){.sales-board{grid-template-columns:repeat(var(--sales-stage-count),minmax(0,1fr));}}
         .pipeline-scroll {
           scroll-behavior: smooth;
         }
@@ -192,8 +192,6 @@ function StageColumn({
   stages, onDealMoved,
   stage,
   deals,
-  totalValue,
-  currency,
   onAddDeal,
   onEditDeal,
 }: {
@@ -216,23 +214,21 @@ function StageColumn({
     // restore the flex-1 share-the-row behavior. The droppable ref is
     // on the inner messages region below — intentionally NOT here, so
     // a drag over the column header doesn't highlight the whole column.
-    <div className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-xl border border-border bg-card/60 p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
+    <div className="flex min-w-0 flex-col self-start rounded-lg border border-border bg-card/60 p-2">
       {/* 3px colored top border — sits above the column's padding */}
       <div
-        className="-mx-4 -mt-4 h-[3px] rounded-t-xl"
+        className="-mx-2 -mt-2 h-[3px] rounded-t-xl"
         style={{ backgroundColor: stage.color }}
       />
       <div className="flex items-center justify-between pt-3">
-        <h3 className="min-w-0 flex-1 text-center text-base font-semibold leading-snug text-foreground">
+        <h3 className="min-w-0 flex-1 break-words text-center text-xs font-semibold leading-snug text-foreground">
           {stage.name}
         </h3>
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
           {deals.length}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {formatCurrency(totalValue, currency)}
-      </p>
+
 
       <div
         ref={setNodeRef}

@@ -32,6 +32,7 @@ const t = getT("Currency");
  * list to offer more — nothing else needs to change.
  */
 export const CURRENCIES: CurrencyOption[] = [
+  { code: "ARS", label: t("ARS"), symbol: "$" },
   { code: "USD", label: t("USD"), symbol: "$" },
   { code: "EUR", label: t("EUR"), symbol: "€" },
   { code: "GBP", label: t("GBP"), symbol: "£" },

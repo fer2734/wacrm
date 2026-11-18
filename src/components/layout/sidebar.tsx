@@ -1,6 +1,5 @@
 "use client";
 
-import { AdvisorAgenda } from "@/components/agenda/advisor-agenda";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
@@ -10,7 +9,6 @@ import { useTotalUnread } from "@/hooks/use-total-unread";
 import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import {
   Bell,
-  CalendarDays,
   Bot,
   Crown,
   GitBranch,
@@ -96,7 +94,6 @@ const navItems: NavItem[] = [
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
-  { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
@@ -190,7 +187,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         {/* Logo row. On mobile we put a close button here; on desktop the
             close button is hidden since the sidebar is always-visible. */}
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href="/agenda" className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <MessageSquare className="h-4 w-4" />
             </div>
@@ -295,7 +292,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               );
             })}
           </ul>
-          <div className="mt-4"><AdvisorAgenda compact /></div>
         </nav>
 
         {/* User section */}

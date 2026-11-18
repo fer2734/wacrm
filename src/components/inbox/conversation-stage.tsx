@@ -55,16 +55,14 @@ export function ConversationStage({ conversationId }: { conversationId: string }
 
   return (
     <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-border bg-card px-3 py-2.5">
-      <label htmlFor={`stage-${conversationId}`} className="flex items-center gap-2 text-sm font-semibold text-foreground">
+      <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <GitBranch className="size-4 text-primary" />{t("stage")}
-      </label>
+      </span>
       {(loading || saving) && <Loader2 className="size-4 animate-spin" aria-label={t("saving")} />}
-      <select id={`stage-${conversationId}`} value={stageId} disabled={loading || saving || stages.length === 0 || failed}
-        onChange={(event) => void changeStage(event.target.value)}
-        className="min-h-11 w-full min-w-0 max-w-sm rounded-lg border border-input bg-background px-3 text-center text-base font-medium text-foreground sm:w-auto sm:min-w-64">
-        <option value="" disabled>{loading ? t("loading") : failed ? t("loadFailed") : stages.length ? t("chooseStage") : t("noStages")}</option>
-        {stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}{new Set(stages.map(s => s.pipeline_id)).size > 1 ? ` · ${stage.pipeline.name}` : ""}</option>)}
-      </select>
+      <div className="grid w-full grid-cols-3 gap-1 sm:flex sm:flex-wrap sm:justify-center">
+        {stages.map(stage=><button key={stage.id} type="button" disabled={loading||saving||failed} aria-pressed={stageId===stage.id} onClick={()=>void changeStage(stage.id)} className={`min-h-8 min-w-0 rounded-md border px-2 py-1 text-center text-xs font-medium leading-tight ${stageId===stage.id?'border-primary bg-primary text-primary-foreground':'border-border bg-background text-foreground hover:bg-muted'}`}>{stage.name}</button>)}
+        {failed&&<p className="col-span-3 text-xs">{t('loadFailed')}</p>}
+      </div>
     </div>
   );
 }

@@ -79,7 +79,7 @@ function LoginPageInner() {
     // reload the invite-accept flow already uses in join/[token].
     const destination = inviteToken
       ? `/join/${encodeURIComponent(inviteToken)}`
-      : "/dashboard";
+      : "/agenda";
     window.location.href = destination;
   };
 

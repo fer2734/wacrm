@@ -1,4 +1,5 @@
 "use client";
+import {useContactAliases} from "@/hooks/use-contact-aliases";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -54,6 +55,7 @@ export function ConversationList({
   initialFilter = "all",
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
+  const {aliases}=useContactAliases();
   
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
@@ -61,9 +63,6 @@ export function ConversationList({
     { label: t("filterWaiting"), value: "waiting" },
     { label: t("filterUnassigned"), value: "unassigned" },
     { label: t("filterExpiring"), value: "expiring" },
-    { label: t("filterOpen"), value: "open" },
-    { label: t("filterPending"), value: "pending" },
-    { label: t("filterClosed"), value: "closed" },
   ], [t]);
 
   const [search, setSearch] = useState("");
@@ -183,7 +182,7 @@ export function ConversationList({
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((c) => {
-        const name = c.contact?.name?.toLowerCase() ?? "";
+        const name = ((c.contact?.id && aliases[c.contact.id]) || c.contact?.name || "").toLowerCase();
         const phone = c.contact?.phone?.toLowerCase() ?? "";
         const lastMsg = c.last_message_text?.toLowerCase() ?? "";
         return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
@@ -191,7 +190,7 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, now, search, selectedTagIds, selectedCompany]);
+  }, [conversations, filter, now, search, selectedTagIds, selectedCompany, aliases]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -439,8 +438,9 @@ function ConversationItem({
   onSelect,
   t,
 }: ConversationItemProps) {
+  const {aliases}=useContactAliases();
   const contact = conversation.contact;
-  const displayName = contact?.name || contact?.phone || t("unknown");
+  const displayName = (contact?.id && aliases[contact.id]) || contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
 
   const handleClick = useCallback(() => {

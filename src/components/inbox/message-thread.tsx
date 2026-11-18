@@ -1,5 +1,7 @@
 "use client";
+import {useContactAliases} from "@/hooks/use-contact-aliases";
 
+import {es} from "date-fns/locale";
 import { ConversationStage } from "./conversation-stage";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
@@ -135,7 +137,7 @@ function formatDateSeparator(dateStr: string, t: ReturnType<typeof useTranslatio
   const date = new Date(dateStr);
   if (isToday(date)) return t("today");
   if (isYesterday(date)) return t("yesterday");
-  return format(date, "MMMM d, yyyy");
+  return format(date, "d 'de' MMMM 'de' yyyy", {locale:es});
 }
 
 function groupMessagesByDate(messages: Message[]) {
@@ -155,11 +157,7 @@ function groupMessagesByDate(messages: Message[]) {
   return groups;
 }
 
-const STATUS_OPTIONS: { label: string; value: ConversationStatus; color: string }[] = [
-  { label: "Open", value: "open", color: "text-primary" },
-  { label: "Pending", value: "pending", color: "text-amber-400" },
-  { label: "Closed", value: "closed", color: "text-muted-foreground" },
-];
+
 
 /**
  * WhatsApp-style doodle background applied to the chat area (both the
@@ -181,7 +179,6 @@ export function MessageThread({
   onOlderMessagesLoaded,
   onNewMessage,
   onUpdateMessage,
-  onStatusChange,
   onAssignChange,
   onBack,
   resyncToken = 0,
@@ -193,7 +190,8 @@ export function MessageThread({
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
 
-  const { user, canManageMembers } = useAuth();
+  const { user, canManageMembers, isAgent } = useAuth();
+  const {aliases}=useContactAliases();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -751,21 +749,6 @@ export function MessageThread({
     [conversation, onNewMessage, onUpdateMessage, t],
   );
 
-  const handleStatusChange = useCallback(
-    async (status: ConversationStatus) => {
-      if (!conversation) return;
-
-      const supabase = createClient();
-      await supabase
-        .from("conversations")
-        .update({ status })
-        .eq("id", conversation.id);
-
-      onStatusChange(conversation.id, status);
-    },
-    [conversation, onStatusChange]
-  );
-
   const handleOpenTemplates = useCallback(() => {
     setTemplateModalOpen(true);
   }, []);
@@ -991,11 +974,8 @@ export function MessageThread({
     );
   }
 
-  const displayName = contact.name || contactHandle(contact);
+  const displayName = aliases[contact.id] || contact.name || contactHandle(contact);
   const messageGroups = groupMessagesByDate(messages);
-  const currentStatus = STATUS_OPTIONS.find(
-    (s) => s.value === conversation.status
-  );
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
   const assignLabel = assignedAgentId
@@ -1100,31 +1080,6 @@ export function MessageThread({
               />
             </button>
           )}
-
-          {/* Status dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  currentStatus?.color ?? "text-muted-foreground"
-                )}>
-                {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => handleStatusChange(opt.value)}
-                  className={cn("text-sm", opt.color)}
-                >
-                  {t(`status${opt.label}`)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
 
           {/* Only administrators assign conversations. */}
           {canManageMembers && <DropdownMenu>
@@ -1300,7 +1255,7 @@ export function MessageThread({
       />
 
       {/* Composer */}
-      <MessageComposer
+      {isAgent && assignedAgentId ? <div className="border-t border-border bg-card p-3 text-center"><p className="mb-2 text-sm">Continuá el seguimiento desde tu propio WhatsApp y registrá las novedades en las notas.</p>{contact.phone && <a href={`https://wa.me/${contact.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">Abrir en mi WhatsApp</a>}</div> : <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
         onSend={handleSend}
@@ -1309,7 +1264,7 @@ export function MessageThread({
         onOpenTemplates={handleOpenTemplates}
         replyTo={replyTo}
         onClearReply={() => setReplyTo(null)}
-      />
+      />}
 
       <TemplatePicker
         open={templateModalOpen}

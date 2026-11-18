@@ -18,7 +18,7 @@ export const VALLE_SALES_FLOW: FlowTemplate = {
     { node_key: 'used', node_type: 'collect_input', config: { prompt_text: 'Contame la marca, modelo, año y kilometraje del usado que entregarías. Si además sumarías dinero, podés indicarlo acá.', var_key: 'usado', next_node_key: 'name' } },
     { node_key: 'name', node_type: 'collect_input', config: { prompt_text: '¿Cómo te llamás?', var_key: 'nombre', next_node_key: 'city' } },
     { node_key: 'city', node_type: 'collect_input', config: { prompt_text: '¿De qué localidad sos?', var_key: 'localidad', next_node_key: 'thanks' } },
-    { node_key: 'thanks', node_type: 'send_message', config: { text: 'Gracias. Voy a pasarle tu consulta a un asesor de Valle Automotores para que continúe la atención.', next_node_key: 'handoff' } },
+    { node_key: 'thanks', node_type: 'send_message', config: { text: 'Gracias. Voy a pasarle tu consulta a un asesor de Valle Automotores, que continuará la atención desde su propio WhatsApp.', next_node_key: 'handoff' } },
     { node_key: 'handoff', node_type: 'handoff', config: { round_robin: true, note: 'Consulta de Valle Automotores\nNombre: {{vars.nombre}}\nLocalidad: {{vars.localidad}}\nVehículo: {{vars.vehiculo}}\nCapital: {{vars.capital}}\nUsado: {{vars.usado}}\nMensaje inicial: {{vars.initial_message}}\nEl bot quedó detenido al asignar la conversación.' } },
   ],
 };
