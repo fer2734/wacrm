@@ -81,6 +81,11 @@ describe("applyInboxFilter", () => {
     expect(applyInboxFilter(list, "unassigned", NOW).map((c) => c.id)).toEqual(["recent", "answered"]);
   });
 
+  it("includes pending unassigned chats for the administrator and excludes closed chats", () => {
+    const chats=[conv("removed-agent",{status:"pending"}),conv("closed",{status:"closed"}),conv("assigned",{status:"pending",assigned_agent_id:"advisor"})];
+    expect(applyInboxFilter(chats,"unassigned",NOW).map(c=>c.id)).toEqual(["removed-agent"]);
+  });
+
   it("keeps the existing unread and status filters", () => {
     expect(applyInboxFilter(list, "unread", NOW).map((c) => c.id)).toEqual(["unread"]);
     expect(applyInboxFilter(list, "pending", NOW).map((c) => c.id)).toEqual(["pending"]);

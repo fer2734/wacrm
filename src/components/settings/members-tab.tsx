@@ -241,7 +241,9 @@ export function MembersTab() {
         toast.error(payload.error || t('removeFailed'));
         return;
       }
-      toast.success(t('removedToast', { name: removingMember.full_name || t('unnamed') }));
+      const result=await res.json();
+      if(result.deletionPending)toast.warning(t('deletionPending'));
+      else toast.success(t('removedToast', { name: removingMember.full_name || t('unnamed') }));
       setMembers((prev) =>
         prev.filter((m) => m.user_id !== removingMember.user_id),
       );

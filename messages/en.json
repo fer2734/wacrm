@@ -1637,7 +1637,7 @@
       "unnamed": "Unnamed",
       "joined": "Joined {date}",
       "remove": "Remove",
-      "removedToast": "Removed {name}",
+      "removedToast": "User {name} deleted; chats awaiting assignment.",
       "updatedToast": "Updated {name} to {role}",
       "pendingInvitations": "Pending invitations",
       "inviteHint": "The plaintext invite URL is only shown once at creation for security — to re-share, revoke the invite below and create a new one.",
@@ -1657,11 +1657,12 @@
       "revokeFailed": "Failed to revoke invitation",
       "networkError": "Could not reach the server",
       "memberAlt": "Member",
-      "removeDialogTitle": "Remove member",
-      "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. Their login isn't deleted.",
+      "removeDialogTitle": "Delete sign-in user",
+      "removeDialogDesc": "Permanently delete the sign-in user for <bold>{name}</bold>. Chats and history remain pending administrator assignment. Tasks move to the account owner. A new invitation is required to return.",
       "cancel": "Cancel",
       "removing": "Removing...",
-      "removeBtn": "Remove member"
+      "removeBtn": "Delete user",
+      "deletionPending": "Team access revoked. User deletion is being retried automatically."
     },
     "invite": {
       "inviteCreated": "Invite created",

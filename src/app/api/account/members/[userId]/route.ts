@@ -4,14 +4,10 @@
 //   PATCH  — change a member's role.   Admin+.
 //   DELETE — remove a member.          Admin+.
 //
-// Both delegate to SECURITY DEFINER RPCs from migration 018:
-//   - set_member_role(p_user_id, p_new_role)
-//   - remove_account_member(p_user_id)
-//
-// The RPCs do the *real* authorisation work — caller must be
-// admin+, target must be in caller's account, target can't be the
-// owner, can't be self. The TS layer here only forwards the call
-// and maps Postgres SQLSTATEs back to HTTP statuses.
+// Role changes use a membership-checked RPC. Removal preserves company
+// records, queues identity deletion and revokes membership in one database
+// transaction, then deletes the Auth user with the server-only Admin API.
+// Failed identity deletion is retried by the background worker.
 // ============================================================
 
 import { NextResponse } from "next/server";
@@ -25,6 +21,7 @@ import {
   RATE_LIMITS,
 } from "@/lib/rate-limit";
 import { getT } from "@/lib/i18n/translate";
+import {finishMemberDeletion} from '@/lib/auth/member-deletion';
 
 const t = getT("Api");
 
@@ -112,13 +109,16 @@ export async function DELETE(
 
     const { userId } = await params;
 
-    const { data, error } = await ctx.supabase.rpc("remove_account_member", {
+    if(!process.env.SUPABASE_SERVICE_ROLE_KEY)return NextResponse.json({error:'No está configurado el servicio de bajas'},{status:503});
+    const { error } = await ctx.supabase.rpc("remove_account_member", {
       p_user_id: userId,
     });
 
     if (error) return rpcErrorToResponse(error);
 
-    return NextResponse.json({ ok: true, newPersonalAccountId: data });
+    let deleted=false;
+    try{deleted=await finishMemberDeletion(userId)}catch{console.error('[members] Baja de acceso pendiente de reintento')}
+    return NextResponse.json({ ok: true, accessDeleted:deleted, deletionPending:!deleted },{status:deleted?200:202});
   } catch (err) {
     return toErrorResponse(err);
   }

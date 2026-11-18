@@ -1637,7 +1637,7 @@
       "unnamed": "Sem nome",
       "joined": "Entrou em {date}",
       "remove": "Remover",
-      "removedToast": "{name} removido",
+      "removedToast": "User {name} deleted; chats awaiting assignment.",
       "updatedToast": "{name} atualizado para {role}",
       "pendingInvitations": "Convites pendentes",
       "inviteHint": "Por segurança, a URL do convite em texto puro só é exibida uma vez, na criação — para compartilhar de novo, revogue o convite abaixo e crie outro.",
@@ -1657,11 +1657,12 @@
       "revokeFailed": "Falha ao revogar o convite",
       "networkError": "Não foi possível conectar ao servidor",
       "memberAlt": "Membro",
-      "removeDialogTitle": "Remover membro",
-      "removeDialogDesc": "Remover <bold>{name}</bold> da conta? A pessoa será desconectada desta conta e receberá uma nova conta pessoal no próximo login. O login dela não é excluído.",
+      "removeDialogTitle": "Delete sign-in user",
+      "removeDialogDesc": "Permanently delete the sign-in user for <bold>{name}</bold>. Chats and history remain pending administrator assignment. Tasks move to the account owner. A new invitation is required to return.",
       "cancel": "Cancelar",
       "removing": "Removendo...",
-      "removeBtn": "Remover membro"
+      "removeBtn": "Delete user",
+      "deletionPending": "Team access revoked. User deletion is being retried automatically."
     },
     "invite": {
       "inviteCreated": "Convite criado",

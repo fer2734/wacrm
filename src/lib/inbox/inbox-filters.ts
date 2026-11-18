@@ -53,7 +53,7 @@ export function applyInboxFilter(
     case "expiring":
       return conversations.filter((c) => isWindowClosing(c, now)).sort(byOldestInbound);
     case "unassigned":
-      return conversations.filter((c) => c.status === "open" && !c.assigned_agent_id);
+      return conversations.filter((c) => c.status !== "closed" && !c.assigned_agent_id);
     default:
       return conversations.filter((c) => c.status === (filter as ConversationStatus));
   }

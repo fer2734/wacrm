@@ -1637,7 +1637,7 @@
       "unnamed": "이름 없음",
       "joined": "{date} 참여",
       "remove": "제거",
-      "removedToast": "{name}을(를) 제거했습니다",
+      "removedToast": "User {name} deleted; chats awaiting assignment.",
       "updatedToast": "{name}을(를) {role}(으)로 변경했습니다",
       "pendingInvitations": "대기 중인 초대",
       "inviteHint": "보안을 위해 초대 URL 원문은 생성 시 한 번만 표시됩니다 — 다시 공유하려면 아래에서 초대를 취소하고 새로 만드세요.",
@@ -1657,11 +1657,12 @@
       "revokeFailed": "초대를 취소하지 못했습니다",
       "networkError": "서버에 연결할 수 없습니다",
       "memberAlt": "팀원",
-      "removeDialogTitle": "멤버 제거",
-      "removeDialogDesc": "<bold>{name}</bold>을(를) 이 계정에서 제거하시겠습니까? 이 계정에서 로그아웃되며 다음 로그인 시 새로운 개인 계정이 발급됩니다. 로그인 정보 자체는 삭제되지 않습니다.",
+      "removeDialogTitle": "Delete sign-in user",
+      "removeDialogDesc": "Permanently delete the sign-in user for <bold>{name}</bold>. Chats and history remain pending administrator assignment. Tasks move to the account owner. A new invitation is required to return.",
       "cancel": "취소",
       "removing": "제거 중...",
-      "removeBtn": "멤버 제거"
+      "removeBtn": "Delete user",
+      "deletionPending": "Team access revoked. User deletion is being retried automatically."
     },
     "invite": {
       "inviteCreated": "초대가 생성되었습니다",

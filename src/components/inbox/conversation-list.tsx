@@ -501,6 +501,7 @@ function ConversationItem({
             />
           </div>
         </div>
+        {!conversation.assigned_agent_id && conversation.status !== 'closed' && <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400">{t('filterUnassigned')}</p>}
       </div>
     </button>
   );

@@ -340,7 +340,7 @@
       "filterAll": "Todas",
       "filterUnread": "Sin leer",
       "filterWaiting": "Esperan respuesta",
-      "filterUnassigned": "Sin asignar",
+      "filterUnassigned": "Pendientes de asignación",
       "filterExpiring": "Ventana a punto de cerrar",
       "filterOpen": "Abiertas",
       "filterPending": "Pendientes",
@@ -1637,7 +1637,7 @@
       "unnamed": "Sin nombre",
       "joined": "Se unió el {date}",
       "remove": "Quitar",
-      "removedToast": "{name} eliminado",
+      "removedToast": "Usuario de {name} eliminado. Chats pendientes de asignación.",
       "updatedToast": "{name} actualizado a {role}",
       "pendingInvitations": "Invitaciones pendientes",
       "inviteHint": "Por seguridad, la URL de la invitación en texto plano solo se muestra una vez, al crearla. Para volver a compartirla, revoca la invitación abajo y crea una nueva.",
@@ -1657,11 +1657,12 @@
       "revokeFailed": "Error al revocar la invitación",
       "networkError": "No se pudo conectar con el servidor",
       "memberAlt": "Miembro",
-      "removeDialogTitle": "Quitar miembro",
-      "removeDialogDesc": "¿Quitar a <bold>{name}</bold> de la cuenta? Se cerrará su sesión en esta cuenta y recibirá una cuenta personal nueva en su próximo inicio de sesión. Su acceso no se elimina.",
+      "removeDialogTitle": "Eliminar usuario de acceso",
+      "removeDialogDesc": "Se eliminará permanentemente el usuario de acceso de <bold>{name}</bold>. Sus chats quedarán pendientes de asignación para el administrador, con su historial. Sus tareas pasarán a la agenda del titular de la cuenta. Esta baja no se puede deshacer; para volver necesitará una invitación nueva.",
       "cancel": "Cancelar",
       "removing": "Quitando...",
-      "removeBtn": "Quitar miembro"
+      "removeBtn": "Eliminar usuario",
+      "deletionPending": "Acceso al equipo revocado y chats pendientes. La eliminación del usuario se está reintentando automáticamente."
     },
     "invite": {
       "inviteCreated": "Invitación creada",
