@@ -32,6 +32,10 @@ ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_APP_LOCALE=$NEXT_PUBLIC_APP_LOCALE \
     NEXT_TELEMETRY_DISABLED=1
 
+# Staging-only URL overrides (production branch is unchanged).
+ENV NEXT_PUBLIC_SUPABASE_URL=https://api-pruebas.valleautomotores.tech \\
+    NEXT_PUBLIC_SITE_URL=https://pruebas.valleautomotores.tech
+
 RUN npm run build
 
 # ---------------------------------------------------------------
@@ -52,4 +56,4 @@ COPY --from=builder --chown=nextjs:nextjs /app/public ./public
 
 USER nextjs
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "NEXT_PUBLIC_SUPABASE_URL=https://api-pruebas.valleautomotores.tech NEXT_PUBLIC_SITE_URL=https://pruebas.valleautomotores.tech node server.js"]
