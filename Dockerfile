@@ -33,8 +33,7 @@ ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_TELEMETRY_DISABLED=1
 
 # Staging-only URL overrides (production branch is unchanged).
-ENV NEXT_PUBLIC_SUPABASE_URL=https://api-pruebas.valleautomotores.tech \\
-    NEXT_PUBLIC_SITE_URL=https://pruebas.valleautomotores.tech
+ENV NEXT_PUBLIC_SUPABASE_URL=https://api-pruebas.valleautomotores.tech NEXT_PUBLIC_SITE_URL=https://pruebas.valleautomotores.tech
 
 RUN npm run build
 
