@@ -2,6 +2,8 @@ name: Pruebas dominio CRM
 on:
   push:
     branches: [pruebas-valle-20261120]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 jobs:
   diagnostico:
