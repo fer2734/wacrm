@@ -49,13 +49,13 @@ async function readEvents(ownerId, offset) {
   let size;
   try { size = (await fs.stat(filename)).size; }
   catch (err) {
-    if (err?.code === "ENOENT") return { events: [], nextOffset: 0, hasMore: false };
+    if (err?.code === "ENOENT") return { events: [], nextOffset: 0, hasMore: false, journalBytes: 0 };
     throw err;
   }
   // An unexpected journal replacement is safe to replay: the CRM uses
   // ON CONFLICT DO NOTHING and only acknowledges fully committed batches.
   const startOffset = Number.isSafeInteger(offset) && offset >= 0 && offset <= size ? offset : 0;
-  if (startOffset === size) return { events: [], nextOffset: size, hasMore: false };
+  if (startOffset === size) return { events: [], nextOffset: size, hasMore: false, journalBytes: size };
   const handle = await fs.open(filename, "r");
   let used = 0, events = [];
   try {
@@ -68,12 +68,12 @@ async function readEvents(ownerId, offset) {
     for (const line of complete) {
       if (!line) continue;
       const n = Buffer.byteLength(line + "\n");
-      if (events.length >= 200) break;
+      if (events.length >= 800) break;
       events.push(JSON.parse(line));
       used += n;
     }
   } finally { await handle.close(); }
-  return { events, nextOffset: startOffset + used, hasMore: startOffset + used < size };
+  return { events, nextOffset: startOffset + used, hasMore: startOffset + used < size, journalBytes: size };
 }
 
 const logger = pino({ level: process.env.LOG_LEVEL || "warn" });
@@ -109,15 +109,32 @@ function extractText(message) {
     (m.audioMessage ? "🎤 Audio" : "") || (m.documentMessage ? "📄 Documento" : "") ||
     (m.stickerMessage ? "Sticker" : "") || "";
 }
+function knownPhone(value) {
+  return typeof value === "string" && /^[0-9]{6,20}@s\\.whatsapp\\.net$/.test(value)
+    ? value : null;
+}
+function normalizedContact(contact, names) {
+  if (!contact || typeof contact.id !== "string") return null;
+  const lid = contact.id.endsWith("@lid") ? contact.id :
+    typeof contact.lid === "string" ? contact.lid : contact.id;
+  if (!allowedJid(lid)) return null;
+  const name = String(contact.name || contact.notify || contact.verifiedName || "").trim().slice(0, 120);
+  const phoneJid = knownPhone(contact.phoneNumber) ||
+    knownPhone(contact.id) || knownPhone(contact.pnJid);
+  if (name) names.set(lid, name);
+  if (name && phoneJid) names.set(phoneJid, name);
+  return { kind: "contact", remoteJid: lid, senderName: name, phoneJid };
+}
 function normalizeWhatsAppMessage(msg, isHistory = false, names = null) {
   const jid = msg?.key?.remoteJid;
   if (!allowedJid(jid) || typeof msg?.key?.id !== "string" || !msg.message) return null;
   const ts = Number(msg.messageTimestamp?.toString?.() || msg.messageTimestamp || 0);
   const sentAt = ts > 0 && Number.isFinite(ts) ? new Date(ts * 1000).toISOString() : new Date().toISOString();
-  const senderName = (names?.get(jid) || msg.pushName || "").slice(0, 180);
+  const senderName = String(names?.get(jid) || msg.pushName || "").slice(0, 120);
+  const phoneJid = knownPhone(msg.key?.remoteJidAlt) || knownPhone(msg.key?.senderPn) || null;
   const text = String(extractText(msg.message)).slice(0, 10000);
   return { kind: "message", remoteJid: jid, whatsappMessageId: msg.key.id,
-    fromMe: !!msg.key.fromMe, text, senderName, sentAt, isHistory };
+    fromMe: !!msg.key.fromMe, text, senderName, phoneJid, sentAt, isHistory };
 }
 async function saveMessages(ownerId, messages, isHistory = false, names = null) {
   const normalized = (messages || [])
@@ -216,19 +233,33 @@ async function start(ownerId) {
     void setStatus(ownerId, "disconnected");
   }, QR_WAIT_MS);
   const names = new Map();
+  session.names = names;
+  const persistContacts = async contacts => {
+    const events = (contacts || [])
+      .map(c => normalizedContact(c, names)).filter(Boolean);
+    await appendEvents(ownerId, events);
+  };
   sock.ev.on("creds.update", async () => {
     // A cancelled pairing must not re-create auth files after Nuevo QR
     // has removed them.
     if (sessions.get(ownerId) !== session) return;
     await saveCreds();
   });
-  sock.ev.on("contacts.upsert", contacts => {
-    // Contacts are NOT chat threads. Avoid filling the inbox with
-    // the user's entire address book; only chats/events create threads.
-    for (const c of contacts || []) {
-      if (c.id && (c.name || c.notify))
-        names.set(c.id, String(c.name || c.notify).slice(0, 180));
-    }
+  for (const eventName of ["contacts.upsert", "contacts.update"]) {
+    sock.ev.on(eventName, contacts => {
+      void persistContacts(contacts).catch(err => {
+        session.lastError = "No se pudieron actualizar los nombres de contactos";
+        logger.warn({ error: String(err) }, "WhatsApp contact mapping sync failed");
+      });
+    });
+  }
+  sock.ev.on("lid-mapping.update", mapping => {
+    const mappings = Array.isArray(mapping) ? mapping : [mapping];
+    const events = mappings.filter(m => allowedJid(m?.lid) && knownPhone(m?.pn))
+      .map(m => ({ kind: "contact", remoteJid: m.lid,
+        senderName: names.get(m.lid) || "", phoneJid: m.pn }));
+    void appendEvents(ownerId, events).catch(err =>
+      logger.warn({ error: String(err) }, "WhatsApp LID mapping journal failed"));
   });
   sock.ev.on("chats.upsert", chats => {
     const headers = (chats || []).filter(c => allowedJid(c.id)).map(c => ({
@@ -242,9 +273,7 @@ async function start(ownerId) {
   });
   sock.ev.on("messaging-history.set", async ({ chats, contacts, messages, isLatest, progress }) => {
     try {
-      for (const c of contacts || []) {
-        if (c.id && (c.name || c.notify)) names.set(c.id, String(c.name || c.notify));
-      }
+      await persistContacts(contacts);
       const chatEvents = (chats || []).filter(c => allowedJid(c.id)).map(c => ({
         kind: "chat", remoteJid: c.id, senderName:
           String(names.get(c.id) || c.name || c.id.split("@")[0]).slice(0, 180)
