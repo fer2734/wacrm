@@ -9,7 +9,9 @@ import { Check, Copy, Edit2, LockKeyhole, MessageCircle, RefreshCw, Send, Smartp
 type PrivateInbox = { id: string; display_name: string; connection_status: string; connected_phone: string | null };
 type PrivateChat = { id: string; remote_jid: string; contact_name: string; last_message_text: string; last_message_at: string | null; unread_count: number };
 type PrivateMessage = { id: string; message_text: string; from_me: boolean; sent_at: string; message_type: string };
-type BridgeStatus = { status: string; qr?: string | null; phone?: string | null; ready?: boolean; error?: string };
+type BridgeStatus = { status: string; qr?: string | null; phone?: string | null; ready?: boolean; error?: string;
+  historyEvents?: number; messageEvents?: number; historyProgress?: number | null;
+  historyFinished?: boolean; lastError?: string | null };
 
 function formatDate(value?: string | null) {
   if (!value) return "";
@@ -17,6 +19,7 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 const getPhone = (jid: string) => jid.split("@")[0];
+const isPhoneJid = (jid: string) => jid.endsWith("@s.whatsapp.net");
 
 export default function PrivateInboxPage() {
   const { user, loading: authLoading, accountStatus } = useAuth();
@@ -32,6 +35,9 @@ export default function PrivateInboxPage() {
   const [busy, setBusy] = useState(false);
   const [mobileChat, setMobileChat] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [syncError, setSyncError] = useState("");
+  const [importedCount, setImportedCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
 
   const loadInbox = useCallback(async () => {
     if (!user) return;
@@ -95,6 +101,50 @@ export default function PrivateInboxPage() {
     const timer = window.setInterval(() => void loadMessages(), 5000);
     return () => window.clearInterval(timer);
   }, [loadMessages]);
+
+  // Pull durable WhatsApp events through the agent's authenticated CRM
+  // session. History may arrive in many batches; retry safely from the
+  // last committed journal position. Polling works even after reconnect.
+  useEffect(() => {
+    if (!user || !inbox) return;
+    let stopped = false;
+    let inFlight = false;
+    let consecutiveErrors = 0;
+    const sync = async () => {
+      if (inFlight || stopped) return;
+      inFlight = true;
+      setSyncing(true);
+      try {
+        let received = 0;
+        for (let page = 0; page < 4 && !stopped; page++) {
+          const response = await fetch("/api/private-whatsapp/sync", { method: "POST", cache: "no-store" });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || "Sincronización no disponible");
+          received += Number(data.imported || 0);
+          if (!data.hasMore) break;
+        }
+        consecutiveErrors = 0;
+        if (!stopped) {
+          setSyncError("");
+          if (received) {
+            setImportedCount(n => n + received);
+            void loadChats();
+            void loadMessages();
+          }
+        }
+      } catch (err) {
+        consecutiveErrors++;
+        if (!stopped && consecutiveErrors >= 2)
+          setSyncError(err instanceof Error ? err.message : "Error al sincronizar mensajes");
+      } finally {
+        inFlight = false;
+        if (!stopped) setSyncing(false);
+      }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 4000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [user, inbox, loadChats, loadMessages]);
 
   async function saveName() {
     if (!inbox || !name.trim() || saving) return;
@@ -192,6 +242,8 @@ export default function PrivateInboxPage() {
             {connected ? "Conectado: +" + (connection.phone || inbox?.connected_phone || "") :
              connection.status === "qr" || connection.status === "connecting" ? "Esperando vinculación..." :
              "WhatsApp individual independiente del CRM compartido"}
+            {syncing ? " · Importando mensajes..." : importedCount ? " · " + importedCount + " mensajes importados" : ""}
+            {connection.historyEvents ? " · Historial recibido: " + connection.historyEvents : ""}
           </p>
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => { void pollStatus(); void loadChats(); void loadMessages(); }}
@@ -215,6 +267,11 @@ export default function PrivateInboxPage() {
         </div>
       </div>
 
+      {(syncError || connection.lastError) && (
+        <div className="shrink-0 border-b border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+          {syncError || connection.lastError}
+        </div>
+      )}
       {!connected && (
         <div className="shrink-0 border-b border-border bg-muted/20 p-3">
           {connection.qr ? (
@@ -243,13 +300,13 @@ export default function PrivateInboxPage() {
         <aside className={`min-h-0 w-full shrink-0 overflow-y-auto border-r border-border bg-card sm:w-72 lg:w-80 ${mobileChat ? "hidden sm:block" : ""}`}>
           <div className="border-b border-border px-3 py-2 text-xs font-semibold text-muted-foreground">Conversaciones personales ({chats.length})</div>
           {chats.length === 0 && <p className="px-3 py-5 text-xs text-muted-foreground">
-            {connected ? "Las conversaciones aparecen aquí al recibir nuevos mensajes." : "Vinculá tu WhatsApp para ver tus chats privados."}
+            {connected ? "Sincronizando chats e historial. Puede tardar al importar un número con muchas conversaciones." : "Vinculá tu WhatsApp para ver tus chats privados."}
           </p>}
           {chats.map(chat => (
             <button type="button" key={chat.id} onClick={() => void selectChat(chat)}
               className={`w-full border-b border-border/60 px-3 py-3 text-left hover:bg-muted/50 ${selected === chat.id ? "bg-primary/10" : ""}`}>
               <div className="flex min-w-0 items-center justify-between gap-2">
-                <span className="truncate text-sm font-semibold text-foreground">{chat.contact_name || "+" + getPhone(chat.remote_jid)}</span>
+                <span className="truncate text-sm font-semibold text-foreground">{chat.contact_name || (isPhoneJid(chat.remote_jid) ? "+" + getPhone(chat.remote_jid) : getPhone(chat.remote_jid))}</span>
                 <span className="shrink-0 text-[10px] text-muted-foreground">{formatDate(chat.last_message_at)}</span>
               </div>
               <div className="mt-1 flex items-center justify-between gap-2">
@@ -268,12 +325,18 @@ export default function PrivateInboxPage() {
               <button type="button" className="min-h-9 rounded-md border border-border px-2 text-xs sm:hidden"
                 onClick={() => setMobileChat(false)}>Volver</button>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{currentChat.contact_name || "+" + getPhone(currentChat.remote_jid)}</p>
-                <p className="text-[11px] text-muted-foreground">+{getPhone(currentChat.remote_jid)}</p>
+                <p className="truncate text-sm font-semibold">{currentChat.contact_name || (isPhoneJid(currentChat.remote_jid) ? "+" + getPhone(currentChat.remote_jid) : getPhone(currentChat.remote_jid))}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {isPhoneJid(currentChat.remote_jid) ? "+" + getPhone(currentChat.remote_jid) : "Contacto de WhatsApp"}
+                </p>
               </div>
-              <button type="button" title="Copiar teléfono" aria-label="Copiar teléfono"
-                onClick={() => void navigator.clipboard.writeText(getPhone(currentChat.remote_jid)).then(() => toast.success("Número copiado"))}
-                className="flex size-9 items-center justify-center rounded-md border border-border"><Copy className="size-4" /></button>
+              {isPhoneJid(currentChat.remote_jid) && (
+                <button type="button" title="Copiar teléfono" aria-label="Copiar teléfono"
+                  onClick={() => void navigator.clipboard.writeText(getPhone(currentChat.remote_jid)).then(() => toast.success("Número copiado"))}
+                  className="flex size-9 items-center justify-center rounded-md border border-border">
+                  <Copy className="size-4" />
+                </button>
+              )}
             </div>
             <div className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto px-3 py-3">
               <div className="space-y-2">
