@@ -62,16 +62,34 @@ async function start(ownerId) {
   const prev = sessions.get(ownerId);
   if (prev && ["connecting", "qr", "connected"].includes(prev.status)) return prev;
   const folder = path.join(BASE, ownerId);
-  await fs.mkdir(folder, { recursive: true, mode: 0o700 });
-  const { state, saveCreds } = await loadWhatsAppAuthState(folder);
+  try {
+    await fs.mkdir(folder, { recursive: true, mode: 0o700 });
+  } catch (err) {
+    logger.error({ error: String(err) }, "Cannot create WhatsApp session folder");
+    throw Object.assign(new Error("No se puede escribir el almacenamiento privado de sesiones"), { code: "SESSION_STORAGE" });
+  }
+  let state, saveCreds;
+  try {
+    ({ state, saveCreds } = await loadWhatsAppAuthState(folder));
+  } catch (err) {
+    logger.error({ error: String(err) }, "Cannot read WhatsApp session authentication");
+    throw Object.assign(new Error("No se pudo abrir la sesión de WhatsApp"), { code: "SESSION_AUTH" });
+  }
   const session = { sock: null, status: "connecting", qr: null, phone: null, restarting: false };
   sessions.set(ownerId, session);
-  const sock = makeWASocket({
-    auth: state, logger, printQRInTerminal: false,
-    browser: ["Valle Automotores", "Chrome", "1.0"],
-    syncFullHistory: false,
-    markOnlineOnConnect: false
-  });
+  let sock;
+  try {
+    sock = makeWASocket({
+      auth: state, logger, printQRInTerminal: false,
+      browser: ["Valle Automotores", "Chrome", "1.0"],
+      syncFullHistory: false,
+      markOnlineOnConnect: false
+    });
+  } catch (err) {
+    sessions.delete(ownerId);
+    logger.error({ error: String(err) }, "WhatsApp Web socket failed to initialize");
+    throw Object.assign(new Error("No se pudo iniciar el cliente WhatsApp Web"), { code: "WA_SOCKET_INIT" });
+  }
   session.sock = sock;
   sock.ev.on("creds.update", saveCreds);
   sock.ev.on("messages.upsert", async payload => {
@@ -146,14 +164,15 @@ http.createServer(async (req, res) => {
     if (!uuid(ownerId)) return send(res, 400, { error: "Invalid session identity" });
     if (rawPath.pathname === "/v1/status" && req.method === "GET") {
       const instance = sessions.get(ownerId);
-      const box = await inbox(ownerId);
       return send(res, 200, {
-        status: instance?.status || box?.connection_status || "not_connected",
-        qr: instance?.qr || null, phone: instance?.phone || box?.connected_phone || null,
+        status: instance?.status || "not_connected",
+        qr: instance?.qr || null, phone: instance?.phone || null,
         ready: !!instance && instance.status === "connected"
       });
     }
-    if (!(await inbox(ownerId))) return send(res, 404, { error: "Private inbox not found" });
+    // The CRM already authenticates the user, ensures this inbox exists,
+    // and forwards the request with a server-to-server secret. A reverse
+    // database callback is NOT needed to initiate or poll a QR session.
     if (rawPath.pathname === "/v1/connect" && req.method === "POST") {
       const instance = await start(ownerId);
       return send(res, 200, { status: instance.status, qr: instance.qr, phone: instance.phone });
@@ -176,12 +195,16 @@ http.createServer(async (req, res) => {
     return send(res, 404, { error: "Not found" });
   } catch (err) {
     logger.error({ error: String(err) }, "Private WhatsApp bridge request error");
-    return send(res, 500, { error: "Error de conexión privada" });
+    const code = typeof err?.code === "string" && ["SESSION_STORAGE", "SESSION_AUTH", "WA_SOCKET_INIT"].includes(err.code)
+      ? err.code : "PRIVATE_WA_REQUEST_FAILED";
+    const error = code === "PRIVATE_WA_REQUEST_FAILED" ? "No se pudo procesar la conexión privada" : String(err.message);
+    return send(res, 500, { error, code });
   }
 }).listen(PORT, "0.0.0.0", () => logger.info("Private WhatsApp bridge listening"));
 for (const item of await fs.readdir(BASE, { withFileTypes: true })) {
   if (item.isDirectory() && uuid(item.name)) {
-    void inbox(item.name).then(box => { if (box) return start(item.name); })
-      .catch(err => logger.warn({ error: String(err) }, "Session resume failed"));
+    // Only user-UUID directories persisted by the CRM can be resumed.
+    // Do not depend on a reverse CRM callback to resume WhatsApp on reboot.
+    void start(item.name).catch(err => logger.warn({ error: String(err) }, "Session resume failed"));
   }
 }
