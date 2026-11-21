@@ -9,7 +9,7 @@ const PORT = Number(process.env.PORT || 3081);
 const BASE = process.env.SESSION_DIR || "/data/wa-sessions";
 const secret = process.env.PRIVATE_WA_BRIDGE_KEY;
 const callbackUrl = process.env.CRM_CALLBACK_URL;
-if (!secret || secret.length < 32 || !callbackUrl || !callbackUrl.startsWith("https://")) {
+if (!secret || secret.length < 32 || !callbackUrl || !(/^(https:\/\/[^/]+|http:\/\/wacrm_wacrm:3000)\/api\/private-whatsapp\/internal$/.test(callbackUrl))) {
   throw new Error("Missing private WhatsApp key or authenticated CRM callback URL.");
 }
 const sessions = new Map();
@@ -48,7 +48,7 @@ function extractText(message) {
 }
 async function saveMessage(ownerId, msg) {
   const jid = msg.key?.remoteJid;
-  if (!jid || !/^\\d{6,18}@s\\.whatsapp\\.net$/.test(jid) || !msg.key?.id || !msg.message) return;
+  if (!jid || !/^\d{6,18}@s\.whatsapp\.net$/.test(jid) || !msg.key?.id || !msg.message) return;
   const text = String(extractText(msg.message)).slice(0, 10000);
   const senderName = typeof msg.pushName === "string" ? msg.pushName.slice(0, 180) : "";
   const ts = Number(msg.messageTimestamp?.toString?.() || msg.messageTimestamp || 0);
