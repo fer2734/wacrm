@@ -117,6 +117,32 @@ async function saveMessages(ownerId, messages, isHistory = false, names = null) 
     session.lastEventAt = new Date().toISOString();
   }
 }
+// Re-pairing may delete Baileys credentials but MUST never delete the
+// durable inbound events journal: the CRM might not have imported it yet.
+async function clearPairingCredentials(ownerId) {
+  const folder = path.join(BASE, ownerId);
+  await appendInFlight.get(ownerId)?.catch(() => {});
+  let files;
+  try { files = await fs.readdir(folder, { withFileTypes: true }); }
+  catch (err) {
+    if (err?.code === "ENOENT") return;
+    throw err;
+  }
+  for (const file of files) {
+    if (file.name === "events.jsonl") continue;
+    await fs.rm(path.join(folder, file.name), { recursive: true, force: true });
+  }
+}
+async function restartPairing(ownerId) {
+  const current = sessions.get(ownerId);
+  sessions.delete(ownerId);
+  if (current?.sock) {
+    try { current.sock.end(undefined); } catch {}
+  }
+  await clearPairingCredentials(ownerId);
+  await setStatus(ownerId, "not_connected", null);
+  return start(ownerId);
+}
 async function start(ownerId) {
   const prev = sessions.get(ownerId);
   if (prev && ["connecting", "qr", "connected"].includes(prev.status)) return prev;
@@ -134,7 +160,7 @@ async function start(ownerId) {
     logger.error({ error: String(err) }, "Cannot read WhatsApp session authentication");
     throw Object.assign(new Error("No se pudo abrir la sesión de WhatsApp"), { code: "SESSION_AUTH" });
   }
-  const session = { sock: null, status: "connecting", qr: null, phone: null, restarting: false };
+  const session = { sock: null, status: "connecting", qr: null, phone: null, restarting: false, startedAt: Date.now(), lastError: null };
   sessions.set(ownerId, session);
   let sock;
   try {
@@ -199,10 +225,19 @@ async function start(ownerId) {
   sock.ev.on("connection.update", async update => {
     if (sessions.get(ownerId) !== session) return;
     if (update.qr) {
-      try { session.qr = await QRCode.toDataURL(update.qr, { width: 300, margin: 2 }); }
-      catch { session.qr = null; }
-      session.status = "qr";
-      await setStatus(ownerId, "qr");
+      try {
+        session.qr = await QRCode.toDataURL(update.qr, { width: 300, margin: 2 });
+        if (sessions.get(ownerId) !== session) return;
+        session.status = "qr";
+        session.lastError = null;
+        await setStatus(ownerId, "qr");
+      } catch (err) {
+        session.qr = null;
+        session.status = "disconnected";
+        session.lastError = "No se pudo generar el código QR. Usá Nuevo QR para reintentar.";
+        logger.error({ error: String(err) }, "Private QR render failed");
+        await setStatus(ownerId, "disconnected");
+      }
     }
     if (update.connection === "open") {
       session.status = "connected";
@@ -215,11 +250,17 @@ async function start(ownerId) {
       session.status = "disconnected";
       await setStatus(ownerId, "disconnected");
       const reason = update.lastDisconnect?.error?.output?.statusCode;
+      const authenticated = !!state.creds.registered;
+      session.lastError = !authenticated
+        ? "No se completó la vinculación. Tocá Nuevo QR para generar otro código."
+        : "El dispositivo se desconectó. Podés intentar vincularlo nuevamente.";
       if (reason === DisconnectReason.loggedOut) {
         sessions.delete(ownerId);
-        await fs.rm(folder, { recursive: true, force: true });
+        await clearPairingCredentials(ownerId);
         await setStatus(ownerId, "not_connected", null);
-      } else if (!session.restarting) {
+      } else if (authenticated && !session.restarting) {
+        // Retry an already paired device, but never leave an unpaired
+        // session in an infinite "connecting" loop with no QR.
         session.restarting = true;
         sessions.delete(ownerId);
         setTimeout(() => { void start(ownerId).catch(err => logger.error(String(err))); }, 4000);
@@ -235,7 +276,7 @@ async function unlink(ownerId) {
     try { await session.sock.logout(); } catch {}
     try { session.sock.end(undefined); } catch {}
   }
-  await fs.rm(path.join(BASE, ownerId), { recursive: true, force: true });
+  await clearPairingCredentials(ownerId);
   await setStatus(ownerId, "not_connected", null);
 }
 async function readJson(req) {
@@ -270,7 +311,9 @@ http.createServer(async (req, res) => {
         messageEvents: instance?.messageEvents || 0,
         historyProgress: instance?.historyProgress ?? null,
         historyFinished: !!instance?.historyFinished,
-        lastError: instance?.lastError || null
+        lastError: instance?.lastError || null,
+        connectingSeconds: instance?.status === "connecting"
+          ? Math.floor((Date.now() - instance.startedAt) / 1000) : 0
       });
     }
     // The CRM already authenticates the user, ensures this inbox exists,
@@ -283,6 +326,10 @@ http.createServer(async (req, res) => {
     }
     if (rawPath.pathname === "/v1/connect" && req.method === "POST") {
       const instance = await start(ownerId);
+      return send(res, 200, { status: instance.status, qr: instance.qr, phone: instance.phone });
+    }
+    if (rawPath.pathname === "/v1/reset-pairing" && req.method === "POST") {
+      const instance = await restartPairing(ownerId);
       return send(res, 200, { status: instance.status, qr: instance.qr, phone: instance.phone });
     }
     if (rawPath.pathname === "/v1/disconnect" && req.method === "POST") {
