@@ -64,7 +64,7 @@ export async function POST(request: Request) {
   if (action === "send") {
     const remoteJid = typeof body.remoteJid === "string" ? body.remoteJid : "";
     const text = typeof body.text === "string" ? body.text.trim() : "";
-    if (!/^\d{6,18}@s\.whatsapp\.net$/.test(remoteJid) || !text || text.length > 4000)
+    if (!/^(?:[0-9]{6,20}@(s\.whatsapp\.net|lid)|[0-9]{5,20}-[0-9]{4,20}@g\.us)$/.test(remoteJid) || !text || text.length > 4000)
       return NextResponse.json({ error: "Destinatario o mensaje incorrecto" }, { status: 400 });
     const { data: inbox } = await ctx.supabase
       .from("private_whatsapp_inboxes").select("id")
