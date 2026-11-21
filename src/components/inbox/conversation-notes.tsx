@@ -17,6 +17,7 @@ export function ConversationNotes({ contactId, editSignal = 0 }: { contactId: st
   const [saving, setSaving] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  const previousEditSignal = useRef(editSignal);
 
   const refresh = useCallback(async () => {
     const { data, error } = await createClient()
@@ -48,11 +49,12 @@ export function ConversationNotes({ contactId, editSignal = 0 }: { contactId: st
   }, [contactId, refresh]);
 
   useEffect(() => {
-    if (editSignal > 0) {
+    if (editSignal > previousEditSignal.current) {
       setEditingId(null);
       setDraft("");
       setAdding(true);
     }
+    previousEditSignal.current = editSignal;
   }, [editSignal]);
 
   useEffect(() => {
@@ -138,7 +140,7 @@ export function ConversationNotes({ contactId, editSignal = 0 }: { contactId: st
           Sin notas. Tocá para agregar una.
         </button>
       ) : (
-        <div className="mt-1 space-y-1">
+        <div className="mt-1 max-h-40 space-y-1 overflow-y-auto">
           {(showAll ? notes : notes.slice(0, 1)).map(note => (
             <div key={note.id} className="flex items-start justify-between gap-2 rounded-md bg-muted/50 px-2 py-1.5">
               <div className="min-w-0">
