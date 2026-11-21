@@ -4,10 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Check, Copy, Edit2, LockKeyhole, MessageCircle, RefreshCw, Send, Smartphone, Unplug } from "lucide-react";
+import { Check, Copy, Edit2, LockKeyhole, MessageCircle, RefreshCw, Send, Smartphone, Unplug, Search, ChevronDown, GitBranch } from "lucide-react";
 
 type PrivateInbox = { id: string; display_name: string; connection_status: string; connected_phone: string | null };
-type PrivateChat = { id: string; remote_jid: string; contact_name: string; last_message_text: string; last_message_at: string | null; unread_count: number };
+type PrivateChat = { id: string; remote_jid: string; contact_name: string; display_name_override: string | null;
+  phone_jid: string | null; stage_id: string | null; last_message_text: string; last_message_at: string | null; unread_count: number };
+type SalesStage = { id: string; name: string; color: string; position: number };
 type PrivateMessage = { id: string; message_text: string; from_me: boolean; sent_at: string; message_type: string };
 type BridgeStatus = { status: string; qr?: string | null; phone?: string | null; ready?: boolean; error?: string;
   historyEvents?: number; messageEvents?: number; historyProgress?: number | null;
@@ -20,14 +22,32 @@ function formatDate(value?: string | null) {
 }
 const getPhone = (jid: string) => jid.split("@")[0];
 const isPhoneJid = (jid: string) => jid.endsWith("@s.whatsapp.net");
+const displayName = (chat: PrivateChat) => {
+  if (chat.display_name_override?.trim()) return chat.display_name_override.trim();
+  const name = chat.contact_name?.trim() || "";
+  if (name && name !== getPhone(chat.remote_jid) && !/^[0-9]+$/.test(name)) return name;
+  const knownNumber = chat.phone_jid || (isPhoneJid(chat.remote_jid) ? chat.remote_jid : null);
+  if (knownNumber) return "+" + getPhone(knownNumber);
+  return "Contacto sin nombre · ID " + getPhone(chat.remote_jid).slice(-6);
+};
+const contactPhone = (chat: PrivateChat) => chat.phone_jid ||
+  (isPhoneJid(chat.remote_jid) ? chat.remote_jid : null);
 
 export default function PrivateInboxPage() {
-  const { user, loading: authLoading, accountStatus } = useAuth();
+  const { user, accountId, loading: authLoading, accountStatus } = useAuth();
   const [inbox, setInbox] = useState<PrivateInbox | null>(null);
   const [name, setName] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [connection, setConnection] = useState<BridgeStatus>({ status: "not_connected" });
   const [chats, setChats] = useState<PrivateChat[]>([]);
+  const [totalChats, setTotalChats] = useState(0);
+  const [chatSearch, setChatSearch] = useState("");
+  const [chatLimit, setChatLimit] = useState(200);
+  const [stages, setStages] = useState<SalesStage[]>([]);
+  const [editingContactName, setEditingContactName] = useState(false);
+  const [contactNameDraft, setContactNameDraft] = useState("");
+  const [updatingContact, setUpdatingContact] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({ offset: 0, total: 0, hasMore: false });
   const [selected, setSelected] = useState<string | null>(null);
   const [messages, setMessages] = useState<PrivateMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -51,13 +71,26 @@ export default function PrivateInboxPage() {
   }, [user]);
 
   const loadChats = useCallback(async () => {
-    if (!inbox) { setChats([]); return; }
-    const { data, error } = await createClient().from("private_whatsapp_chats")
-      .select("id,remote_jid,contact_name,last_message_text,last_message_at,unread_count")
-      .eq("inbox_id", inbox.id).order("last_message_at", { ascending: false, nullsFirst: false }).limit(250);
+    if (!inbox) { setChats([]); setTotalChats(0); return; }
+    let query = createClient().from("private_whatsapp_chats")
+      .select("id,remote_jid,contact_name,display_name_override,phone_jid,stage_id,last_message_text,last_message_at,unread_count", { count: "exact" })
+      .eq("inbox_id", inbox.id);
+    const search = chatSearch.trim().replace(/[^\\p{L}\\p{N} +@._-]/gu, "").slice(0, 50);
+    if (search) {
+      query = query.or([
+        "contact_name.ilike.%" + search + "%",
+        "display_name_override.ilike.%" + search + "%",
+        "phone_jid.ilike.%" + search + "%",
+        "remote_jid.ilike.%" + search + "%"
+      ].join(","));
+    }
+    const { data, error, count } = await query
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .range(0, chatLimit - 1);
     if (error) { console.error(error.message); return; }
     setChats((data || []) as PrivateChat[]);
-  }, [inbox]);
+    setTotalChats(count || 0);
+  }, [inbox, chatLimit, chatSearch]);
 
   const loadMessages = useCallback(async () => {
     if (!selected || !inbox) { setMessages([]); return; }
@@ -68,6 +101,20 @@ export default function PrivateInboxPage() {
     if (error) { console.error(error.message); return; }
     setMessages(((data || []) as PrivateMessage[]).reverse());
   }, [selected, inbox]);
+
+  const loadStages = useCallback(async () => {
+    if (!accountId) return;
+    const db = createClient();
+    const { data: pipelines } = await db.from("pipelines")
+      .select("id").eq("account_id", accountId);
+    const ids = (pipelines || []).map(p => p.id);
+    if (!ids.length) return;
+    const { data, error } = await db.from("pipeline_stages")
+      .select("id,name,color,position").in("pipeline_id", ids).order("position");
+    if (!error) setStages((data || []) as SalesStage[]);
+  }, [accountId]);
+
+  useEffect(() => { void loadStages(); }, [loadStages]);
 
   const pollStatus = useCallback(async () => {
     if (!user) return;
@@ -121,6 +168,13 @@ export default function PrivateInboxPage() {
           const data = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(data.error || "Sincronización no disponible");
           received += Number(data.imported || 0);
+          if (!stopped && Number.isFinite(Number(data.journalBytes))) {
+            setSyncProgress({
+              offset: Number(data.offset || 0),
+              total: Number(data.journalBytes || 0),
+              hasMore: !!data.hasMore
+            });
+          }
           if (!data.hasMore) break;
         }
         consecutiveErrors = 0;
@@ -191,6 +245,32 @@ export default function PrivateInboxPage() {
     } finally { setBusy(false); }
   }
 
+  async function changeStage(chat: PrivateChat, stageId: string) {
+    if (!user) return;
+    const { error } = await createClient().from("private_whatsapp_chats")
+      .update({ stage_id: stageId || null })
+      .eq("id", chat.id).eq("owner_user_id", user.id);
+    if (error) { toast.error("No se pudo guardar la etapa de venta"); return; }
+    setChats(current => current.map(c => c.id === chat.id ? { ...c, stage_id: stageId || null } : c));
+    toast.success("Etapa de venta guardada");
+  }
+
+  async function saveContactName() {
+    const chat = chats.find(c => c.id === selected);
+    if (!chat || !user || updatingContact) return;
+    setUpdatingContact(true);
+    const alias = contactNameDraft.trim().slice(0, 120);
+    const { error } = await createClient().from("private_whatsapp_chats")
+      .update({ display_name_override: alias || null })
+      .eq("id", chat.id).eq("owner_user_id", user.id);
+    setUpdatingContact(false);
+    if (error) { toast.error("No se pudo guardar el nombre"); return; }
+    setChats(current => current.map(c => c.id === chat.id
+      ? { ...c, display_name_override: alias || null } : c));
+    setEditingContactName(false);
+    toast.success("Nombre actualizado");
+  }
+
   async function sendMessage() {
     if (!selected || !draft.trim() || busy || !connection.ready) return;
     const chat = chats.find(c => c.id === selected);
@@ -203,6 +283,8 @@ export default function PrivateInboxPage() {
   async function selectChat(chat: PrivateChat) {
     setSelected(chat.id);
     setMobileChat(true);
+    setEditingContactName(false);
+    setContactNameDraft(chat.display_name_override || (chat.contact_name && !/^[0-9]+$/.test(chat.contact_name) ? chat.contact_name : ""));
     if (chat.unread_count && inbox) {
       await createClient().from("private_whatsapp_chats")
         .update({ unread_count: 0 }).eq("id", chat.id).eq("inbox_id", inbox.id);
@@ -211,6 +293,11 @@ export default function PrivateInboxPage() {
   }
 
   const currentChat = chats.find(c => c.id === selected);
+  const defaultStage = stages.find(stage => stage.name.toLocaleLowerCase("es-AR") === "nuevo contacto");
+  const stageOf = (chat: PrivateChat) =>
+    stages.find(stage => stage.id === chat.stage_id) || (!chat.stage_id ? defaultStage : undefined);
+  const percent = syncProgress.total > 0
+    ? Math.min(100, Math.floor(100 * syncProgress.offset / syncProgress.total)) : 0;
   const connected = !!connection.ready;
   if (authLoading || initializing && user && accountStatus === "ready")
     return <div className="p-5 text-sm text-muted-foreground">Cargando bandeja privada...</div>;
@@ -248,8 +335,10 @@ export default function PrivateInboxPage() {
             {connected ? "Conectado: +" + (connection.phone || inbox?.connected_phone || "") :
              connection.status === "qr" || connection.status === "connecting" ? "Esperando vinculación..." :
              "WhatsApp individual independiente del CRM compartido"}
-            {syncing ? " · Importando mensajes..." : importedCount ? " · " + importedCount + " mensajes importados" : ""}
-            {connection.historyEvents ? " · Historial recibido: " + connection.historyEvents : ""}
+            {syncing ? " · Sincronizando..." : ""}
+            {syncProgress.total > 0 ? " · Importación " + percent + "%" : ""}
+            {importedCount ? " · Nuevos importados: " + importedCount : ""}
+            {connection.historyEvents ? " · Historial detectado: " + connection.historyEvents : ""}
           </p>
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => { void pollStatus(); void loadChats(); void loadMessages(); }}
