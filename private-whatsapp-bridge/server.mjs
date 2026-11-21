@@ -424,6 +424,29 @@ http.createServer(async (req, res) => {
       if (!Number.isSafeInteger(offset) || offset < 0) return send(res, 400, { error: "Invalid cursor" });
       return send(res, 200, await readEvents(ownerId, offset));
     }
+    if (rawPath.pathname === "/v1/resolve-contacts" && req.method === "POST") {
+      const session = sessions.get(ownerId);
+      if (!session || session.status !== "connected")
+        return send(res, 409, { error: "WhatsApp todavía no está conectado" });
+      const requested = Array.isArray(body.jids) ? body.jids.slice(0, 150).filter(jid =>
+        typeof jid === "string" && jid.endsWith("@lid") && allowedJid(jid)) : [];
+      const events = [];
+      for (const jid of requested) {
+        let mapped = null;
+        try {
+          mapped = await session.sock?.signalRepository?.lidMapping?.getPNForLID?.(jid);
+        } catch (err) {
+          logger.warn({ error: String(err) }, "LID mapping lookup failed");
+        }
+        const phoneJid = knownPhone(mapped);
+        const senderName = String(session.names?.get(jid) ||
+          (phoneJid ? session.names?.get(phoneJid) : "") || "").slice(0, 120);
+        if (phoneJid || senderName)
+          events.push({ kind: "contact", remoteJid: jid, phoneJid, senderName });
+      }
+      await appendEvents(ownerId, events);
+      return send(res, 200, { checked: requested.length, resolved: events.length });
+    }
     if (rawPath.pathname === "/v1/connect" && req.method === "POST") {
       const instance = await start(ownerId);
       return send(res, 200, { status: instance.status, qr: instance.qr, phone: instance.phone });
