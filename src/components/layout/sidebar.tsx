@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
@@ -16,6 +17,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  LockKeyhole,
   Radio,
   Settings,
   Shield,
@@ -94,6 +96,7 @@ const navItems: NavItem[] = [
   { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
+  { href: "/private-inbox", labelKey: "inbox", icon: LockKeyhole },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
@@ -118,7 +121,20 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { profile, profileLoading, account, accountRole, user, signOut } = useAuth();
+  const [privateInboxName, setPrivateInboxName] = useState("Mi WhatsApp privado");
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const refresh = () => {
+      void createClient().from("private_whatsapp_inboxes")
+        .select("display_name").eq("owner_user_id", user.id).maybeSingle()
+        .then(({ data }) => { if (!cancelled) setPrivateInboxName(data?.display_name || "Mi WhatsApp privado"); });
+    };
+    refresh();
+    window.addEventListener("wacrm:private-inbox-name-changed", refresh);
+    return () => { cancelled = true; window.removeEventListener("wacrm:private-inbox-name-changed", refresh); };
+  }, [user]);
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // Only surface the account-name strip when it actually carries
@@ -211,7 +227,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.filter((item) => accountRole !== "agent" ||
-              ["/inbox", "/contacts", "/notifications", "/pipelines", "/agenda"].includes(item.href)).map((item) => {
+              ["/inbox", "/private-inbox", "/contacts", "/notifications", "/pipelines", "/agenda"].includes(item.href)).map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -239,7 +255,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : t(item.labelKey as string)}</span>
+                    <span className="flex-1">{item.href === "/private-inbox" ? privateInboxName : item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : t(item.labelKey as string)}</span>
                     {item.beta && (
                       <span
                         aria-label={t("beta")}
