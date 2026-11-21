@@ -415,48 +415,119 @@ export default function PrivateInboxPage() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <aside className={`min-h-0 w-full shrink-0 overflow-y-auto border-r border-border bg-card sm:w-72 lg:w-80 ${mobileChat ? "hidden sm:block" : ""}`}>
-          <div className="border-b border-border px-3 py-2 text-xs font-semibold text-muted-foreground">Conversaciones personales ({chats.length})</div>
-          {chats.length === 0 && <p className="px-3 py-5 text-xs text-muted-foreground">
-            {connected ? "Sincronizando chats e historial. Puede tardar al importar un número con muchas conversaciones." : "Vinculá tu WhatsApp para ver tus chats privados."}
-          </p>}
-          {chats.map(chat => (
-            <button type="button" key={chat.id} onClick={() => void selectChat(chat)}
-              className={`w-full border-b border-border/60 px-3 py-3 text-left hover:bg-muted/50 ${selected === chat.id ? "bg-primary/10" : ""}`}>
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <span className="truncate text-sm font-semibold text-foreground">{chat.contact_name || (isPhoneJid(chat.remote_jid) ? "+" + getPhone(chat.remote_jid) : getPhone(chat.remote_jid))}</span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">{formatDate(chat.last_message_at)}</span>
-              </div>
-              <div className="mt-1 flex items-center justify-between gap-2">
-                <p className="truncate text-xs text-muted-foreground">{chat.last_message_text}</p>
-                {chat.unread_count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">{chat.unread_count}</span>}
-              </div>
-            </button>
-          ))}
+        <aside className={`flex min-h-0 w-full shrink-0 flex-col border-r border-border bg-card sm:w-80 lg:w-88 ${mobileChat ? "hidden sm:flex" : ""}`}>
+          <div className="shrink-0 space-y-2 border-b border-border bg-card-2/40 px-3 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-foreground">Conversaciones personales</p>
+              <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground">{totalChats.toLocaleString("es-AR")}</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-2.5">
+              <Search className="size-4 shrink-0 text-muted-foreground" />
+              <input type="search" placeholder="Buscar nombre o teléfono"
+                value={chatSearch}
+                onChange={e => { setChatSearch(e.target.value); setChatLimit(200); }}
+                aria-label="Buscar chats privados"
+                className="h-9 min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground" />
+            </div>
+          </div>
+          <div className="private-wa-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {chats.length === 0 && <p className="px-3 py-5 text-xs text-muted-foreground">
+              {chatSearch ? "No se encontraron conversaciones." :
+                connected ? "Importando los chats y el historial de tu WhatsApp..." :
+                "Vinculá tu WhatsApp para ver tus chats privados."}
+            </p>}
+            {chats.map(chat => {
+              const stage = stageOf(chat);
+              return (
+                <button type="button" key={chat.id} onClick={() => void selectChat(chat)}
+                  className={`block w-full border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-muted/50 ${selected === chat.id ? "bg-primary/10" : ""}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">{displayName(chat)}</p>
+                    {chat.unread_count > 0 && <span className="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">{chat.unread_count}</span>}
+                  </div>
+                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                    <span className="font-medium">Último mensaje:</span> {formatDate(chat.last_message_at) || "Sin mensajes"}
+                  </p>
+                  <div className="mt-1 flex min-w-0 items-center justify-between gap-1.5">
+                    <p className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">{chat.last_message_text || "Sin vista previa"}</p>
+                    {stage && <span className="inline-flex max-w-[44%] shrink-0 items-center gap-1 truncate rounded-md border px-1.5 py-0.5 text-[10px] font-semibold text-foreground"
+                      style={{ borderColor: stage.color + "66", backgroundColor: stage.color + "1c" }}>
+                      <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} />
+                      <span className="truncate">{stage.name}</span>
+                    </span>}
+                  </div>
+                </button>
+              );
+            })}
+            {chats.length < totalChats && (
+              <button type="button" onClick={() => setChatLimit(n => n + 200)}
+                className="flex w-full items-center justify-center gap-1.5 border-b border-border px-3 py-3 text-xs font-semibold text-primary hover:bg-primary/10">
+                <ChevronDown className="size-4" /> Mostrar más ({totalChats - chats.length})
+              </button>
+            )}
+          </div>
         </aside>
 
         <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${mobileChat ? "flex" : "hidden sm:flex"}`}>
           {!currentChat ? <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
             <MessageCircle className="size-8 opacity-50" /> Seleccioná un chat privado
           </div> : <>
-            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
-              <button type="button" className="min-h-9 rounded-md border border-border px-2 text-xs sm:hidden"
-                onClick={() => setMobileChat(false)}>Volver</button>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{currentChat.contact_name || (isPhoneJid(currentChat.remote_jid) ? "+" + getPhone(currentChat.remote_jid) : getPhone(currentChat.remote_jid))}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {isPhoneJid(currentChat.remote_jid) ? "+" + getPhone(currentChat.remote_jid) : "Contacto de WhatsApp"}
-                </p>
+            <div className="shrink-0 border-b border-border bg-card px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <button type="button" className="min-h-9 rounded-md border border-border px-2 text-xs sm:hidden"
+                  onClick={() => setMobileChat(false)}>Volver</button>
+                <div className="min-w-0 flex-1">
+                  {editingContactName ? (
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <input value={contactNameDraft} maxLength={120}
+                        onChange={e => setContactNameDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") void saveContactName(); if (e.key === "Escape") setEditingContactName(false); }}
+                        placeholder="Nombre personalizado del contacto"
+                        className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground" />
+                      <button type="button" onClick={() => void saveContactName()}
+                        disabled={updatingContact} title="Guardar nombre"
+                        className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground disabled:opacity-50">
+                        <Check className="size-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="inline-flex max-w-full items-center gap-1.5 text-left text-sm font-semibold text-foreground hover:text-primary"
+                      title="Modificar el nombre del contacto"
+                      onClick={() => { setContactNameDraft(currentChat.display_name_override || (
+                        currentChat.contact_name && !/^[0-9]+$/.test(currentChat.contact_name) ? currentChat.contact_name : ""
+                      )); setEditingContactName(true); }}>
+                      <span className="truncate">{displayName(currentChat)}</span>
+                      <Edit2 className="size-3.5 shrink-0" />
+                    </button>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    {contactPhone(currentChat) ? "+" + getPhone(contactPhone(currentChat)!) : "ID privado de WhatsApp · número no disponible"}
+                  </p>
+                </div>
+                {!!contactPhone(currentChat) && (
+                  <button type="button" title="Copiar teléfono" aria-label="Copiar teléfono"
+                    onClick={() => void navigator.clipboard.writeText(getPhone(contactPhone(currentChat)!)).then(() => toast.success("Número copiado"))}
+                    className="flex size-9 items-center justify-center rounded-md border border-border hover:bg-muted">
+                    <Copy className="size-4" />
+                  </button>
+                )}
               </div>
-              {isPhoneJid(currentChat.remote_jid) && (
-                <button type="button" title="Copiar teléfono" aria-label="Copiar teléfono"
-                  onClick={() => void navigator.clipboard.writeText(getPhone(currentChat.remote_jid)).then(() => toast.success("Número copiado"))}
-                  className="flex size-9 items-center justify-center rounded-md border border-border">
-                  <Copy className="size-4" />
-                </button>
-              )}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <label className="inline-flex min-w-0 items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <GitBranch className="size-4 text-primary" /> Etapa de venta
+                  <select value={currentChat.stage_id || defaultStage?.id || ""}
+                    onChange={e => void changeStage(currentChat, e.target.value)}
+                    disabled={!stages.length}
+                    aria-label="Seleccionar etapa de venta privada"
+                    className="h-9 min-w-0 max-w-52 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60">
+                    {!stages.length && <option value="">Sin etapas disponibles</option>}
+                    {stages.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+                  </select>
+                </label>
+                <span className="text-[11px] text-muted-foreground">Último mensaje: {formatDate(currentChat.last_message_at) || "Sin mensajes"}</span>
+              </div>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto px-3 py-3">
+            <div className="private-wa-scroll flex min-h-0 flex-1 flex-col-reverse overflow-y-auto overscroll-contain px-3 py-3">
               <div className="space-y-2">
                 {messages.map(msg => (
                   <div key={msg.id} className={`flex ${msg.from_me ? "justify-end" : "justify-start"}`}>
