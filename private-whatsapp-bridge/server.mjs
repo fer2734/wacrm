@@ -110,7 +110,7 @@ function extractText(message) {
     (m.stickerMessage ? "Sticker" : "") || "";
 }
 function knownPhone(value) {
-  return typeof value === "string" && /^[0-9]{6,20}@s\\.whatsapp\\.net$/.test(value)
+  return typeof value === "string" && /^[0-9]{6,20}@s\.whatsapp\.net$/.test(value)
     ? value : null;
 }
 function normalizedContact(contact, names) {
@@ -118,23 +118,25 @@ function normalizedContact(contact, names) {
   const lid = contact.id.endsWith("@lid") ? contact.id :
     typeof contact.lid === "string" ? contact.lid : contact.id;
   if (!allowedJid(lid)) return null;
-  const name = String(contact.name || contact.notify || contact.verifiedName || "").trim().slice(0, 120);
+  const name = String(contact.name || contact.verifiedName || contact.notify || "").trim().slice(0, 120);
+  const profileName = String(contact.notify || contact.pushName || contact.verifiedName || "").trim().slice(0, 120);
   const phoneJid = knownPhone(contact.phoneNumber) ||
     knownPhone(contact.id) || knownPhone(contact.pnJid);
   if (name) names.set(lid, name);
   if (name && phoneJid) names.set(phoneJid, name);
-  return { kind: "contact", remoteJid: lid, senderName: name, phoneJid };
+  return { kind: "contact", remoteJid: lid, senderName: name, profileName, phoneJid };
 }
 function normalizeWhatsAppMessage(msg, isHistory = false, names = null) {
   const jid = msg?.key?.remoteJid;
   if (!allowedJid(jid) || typeof msg?.key?.id !== "string" || !msg.message) return null;
   const ts = Number(msg.messageTimestamp?.toString?.() || msg.messageTimestamp || 0);
   const sentAt = ts > 0 && Number.isFinite(ts) ? new Date(ts * 1000).toISOString() : new Date().toISOString();
-  const senderName = String(names?.get(jid) || msg.pushName || "").slice(0, 120);
+  const profileName = !msg.key?.fromMe ? String(msg.pushName || "").trim().slice(0, 120) : "";
+  const senderName = String(names?.get(jid) || profileName || "").slice(0, 120);
   const phoneJid = knownPhone(msg.key?.remoteJidAlt) || knownPhone(msg.key?.senderPn) || null;
   const text = String(extractText(msg.message)).slice(0, 10000);
   return { kind: "message", remoteJid: jid, whatsappMessageId: msg.key.id,
-    fromMe: !!msg.key.fromMe, text, senderName, phoneJid, sentAt, isHistory };
+    fromMe: !!msg.key.fromMe, text, senderName, profileName, phoneJid, sentAt, isHistory };
 }
 async function saveMessages(ownerId, messages, isHistory = false, names = null) {
   const normalized = (messages || [])
