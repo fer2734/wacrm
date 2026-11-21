@@ -11,7 +11,7 @@ type PrivateChat = { id: string; remote_jid: string; contact_name: string; last_
 type PrivateMessage = { id: string; message_text: string; from_me: boolean; sent_at: string; message_type: string };
 type BridgeStatus = { status: string; qr?: string | null; phone?: string | null; ready?: boolean; error?: string;
   historyEvents?: number; messageEvents?: number; historyProgress?: number | null;
-  historyFinished?: boolean; lastError?: string | null };
+  historyFinished?: boolean; lastError?: string | null; connectingSeconds?: number };
 
 function formatDate(value?: string | null) {
   if (!value) return "";
@@ -160,7 +160,7 @@ export default function PrivateInboxPage() {
     toast.success("Nombre guardado");
   }
 
-  async function command(action: "connect" | "disconnect" | "send", payload?: Record<string, unknown>) {
+  async function command(action: "connect" | "reset" | "disconnect" | "send", payload?: Record<string, unknown>) {
     setBusy(true);
     try {
       const response = await fetch("/api/private-whatsapp", {
@@ -169,10 +169,10 @@ export default function PrivateInboxPage() {
       });
       const result = await response.json();
       if (!response.ok) { toast.error(result.error || "No se pudo completar la acción"); return false; }
-      if (action === "connect") {
+      if (action === "connect" || action === "reset") {
         await loadInbox();
         await pollStatus();
-        toast.success("Vinculación iniciada. Escaneá el código QR.");
+        toast.success("Nueva vinculación iniciada. El QR debería mostrarse al recibirlo.");
       }
       if (action === "disconnect") {
         setConnection({ status: "not_connected" });
@@ -256,6 +256,17 @@ export default function PrivateInboxPage() {
                 <Smartphone className="size-4" /> Vincular WhatsApp
               </button>
             )}
+            {!connected && (connection.status === "qr" || connection.status === "connecting") && (
+              <button type="button" disabled={busy}
+                onClick={() => {
+                  if (window.confirm("¿Generar un QR nuevo? Se reiniciará únicamente la sesión de este dispositivo vinculado al CRM, sin borrar tus mensajes importados ni cerrar WhatsApp en el celular.")) {
+                    void command("reset");
+                  }
+                }}
+                className="inline-flex min-h-9 items-center gap-1 rounded-md border border-primary/50 px-2 text-xs font-semibold text-primary hover:bg-primary/10">
+                <RefreshCw className="size-3.5" /> Nuevo QR
+              </button>
+            )}
             {(connected || connection.status === "qr" || connection.status === "connecting") && (
               <button type="button" disabled={busy}
                 onClick={() => { if (window.confirm("¿Desvincular este WhatsApp de tu bandeja privada?")) void command("disconnect"); }}
@@ -286,8 +297,11 @@ export default function PrivateInboxPage() {
           ) : (
             <p className="text-xs text-muted-foreground">
               {connection.status === "unavailable" ? (connection.error || "Servicio de conexión no disponible.") :
-                connection.status === "connecting" || connection.status === "qr" ? "Preparando el código QR..." :
-                "Conectá tu número mediante Dispositivos vinculados. El WhatsApp de tu celular permanece activo."}
+                connection.status === "connecting" || connection.status === "qr"
+                  ? (connection.connectingSeconds && connection.connectingSeconds > 25
+                      ? "El QR no llegó. Usá «Nuevo QR» para reiniciar esta vinculación."
+                      : "Preparando el código QR... Si no aparece, tocá «Nuevo QR».")
+                  : "Conectá tu número mediante Dispositivos vinculados. El WhatsApp de tu celular permanece activo."}
             </p>
           )}
           <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-300">
