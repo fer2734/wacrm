@@ -32,12 +32,39 @@ export async function POST(request: Request) {
   try {
     const db = admin();
     const { data: inbox, error: inboxError } = await db.from("private_whatsapp_inboxes")
-      .select("id,owner_user_id,connection_status,connected_phone")
+      .select("id,owner_user_id,connection_status,connected_phone,sync_offset")
       .eq("owner_user_id", ownerId).maybeSingle();
     if (inboxError) throw inboxError;
     if (payload.action === "inbox")
       return NextResponse.json({ inbox: inbox || null });
     if (!inbox) return NextResponse.json({ error: "Private inbox not found" }, { status: 404 });
+
+    if (payload.action === "cursor") {
+      return NextResponse.json({ offset: Number(inbox.sync_offset) });
+    }
+    if (payload.action === "batch") {
+      const expected = Number(payload.expectedOffset);
+      const next = Number(payload.nextOffset);
+      if (!Number.isSafeInteger(expected) || !Number.isSafeInteger(next) ||
+          expected < 0 || next < expected ||
+          !Array.isArray(payload.events) || payload.events.length > 800)
+        return NextResponse.json({ error: "Invalid journal batch" }, { status: 400 });
+      const { data, error } = await db.rpc("ingest_private_whatsapp_batch", {
+        p_owner: ownerId,
+        p_expected_offset: expected,
+        p_next_offset: next,
+        p_events: payload.events
+      });
+      if (error) throw error;
+      return NextResponse.json(data);
+    }
+    if (payload.action === "unresolved") {
+      const { data, error } = await db.from("private_whatsapp_chats")
+        .select("remote_jid").eq("owner_user_id", ownerId).eq("inbox_id", inbox.id)
+        .like("remote_jid", "%@lid").is("phone_jid", null).limit(2500);
+      if (error) throw error;
+      return NextResponse.json({ jids: (data || []).map(row => row.remote_jid) });
+    }
 
     if (payload.action === "status") {
       const status = payload.status;
