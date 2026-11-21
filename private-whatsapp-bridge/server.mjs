@@ -174,6 +174,64 @@ async function restartPairing(ownerId) {
   await setStatus(ownerId, "not_connected", null);
   return start(ownerId);
 }
+// Import from the VPS even when nobody has the CRM tab open.
+const ownerSyncInFlight = new Set();
+async function flushPrivateJournal(ownerId) {
+  if (ownerSyncInFlight.has(ownerId)) return;
+  ownerSyncInFlight.add(ownerId);
+  try {
+    const { offset: initialOffset } = await crm("cursor", { ownerId });
+    let offset = Number(initialOffset);
+    if (!Number.isSafeInteger(offset) || offset < 0) return;
+    for (let n = 0; n < 8; n++) {
+      const batch = await readEvents(ownerId, offset);
+      if (batch.nextOffset === offset) break;
+      const reply = await crm("batch", {
+        ownerId, expectedOffset: offset, nextOffset: batch.nextOffset,
+        events: batch.events
+      });
+      if (reply?.conflict) {
+        offset = Number(reply.offset);
+        if (!Number.isSafeInteger(offset)) break;
+        continue;
+      }
+      offset = batch.nextOffset;
+      if (!batch.hasMore) break;
+    }
+  } catch (err) {
+    logger.warn({ error: String(err), ownerId }, "Private journal background import failed");
+  } finally {
+    ownerSyncInFlight.delete(ownerId);
+  }
+}
+async function resolveContactsFromStore(session, jids) {
+  if (!session || !session.sock || !Array.isArray(jids)) return 0;
+  const events = [];
+  for (const jid of jids) {
+    if (!allowedJid(jid) || !jid.endsWith("@lid")) continue;
+    let phoneJid = null;
+    try {
+      phoneJid = knownPhone(await session.sock.signalRepository?.lidMapping?.getPNForLID?.(jid));
+    } catch { /* WhatsApp does not always expose a phone number for LIDs. */ }
+    const name = String(session.names?.get(jid) ||
+      (phoneJid ? session.names?.get(phoneJid) : "") || "").slice(0, 120);
+    if (phoneJid || name)
+      events.push({ kind: "contact", remoteJid: jid, phoneJid, senderName: name });
+  }
+  await appendEvents(session.ownerId, events);
+  return events.length;
+}
+async function enrichKnownChats(ownerId, session) {
+  try {
+    const result = await crm("unresolved", { ownerId });
+    const jids = Array.isArray(result?.jids) ? result.jids : [];
+    for (let i = 0; i < jids.length && sessions.get(ownerId) === session; i += 150) {
+      await resolveContactsFromStore(session, jids.slice(i, i + 150));
+    }
+  } catch (err) {
+    logger.warn({ error: String(err) }, "Could not enrich private chat identifiers");
+  }
+}
 async function start(ownerId) {
   const prev = sessions.get(ownerId);
   if (prev?.status === "connected" || (prev?.status === "qr" && prev.qr) ||
@@ -198,7 +256,7 @@ async function start(ownerId) {
     logger.error({ error: String(err) }, "Cannot read WhatsApp session authentication");
     throw Object.assign(new Error("No se pudo abrir la sesión de WhatsApp"), { code: "SESSION_AUTH" });
   }
-  const session = { sock: null, status: "connecting", qr: null, phone: null, startedAt: Date.now(), lastError: null, lastCode: null, lastCloseAt: null, authReady: !!state.creds?.registered, version: null };
+  const session = { ownerId, sock: null, status: "connecting", qr: null, phone: null, startedAt: Date.now(), lastError: null, lastCode: null, lastCloseAt: null, authReady: !!state.creds?.registered, version: null };
   sessions.set(ownerId, session);
   let sock;
   try {
@@ -325,6 +383,8 @@ async function start(ownerId) {
       pairingAttempts.delete(ownerId);
       session.phone = sock.user?.id?.split(":")[0]?.split("@")[0] || null;
       await setStatus(ownerId, "connected", session.phone);
+      void enrichKnownChats(ownerId, session);
+      void flushPrivateJournal(ownerId);
     }
     if (update.connection === "close") {
       clearTimeout(qrTimeout);
@@ -428,24 +488,9 @@ http.createServer(async (req, res) => {
       const session = sessions.get(ownerId);
       if (!session || session.status !== "connected")
         return send(res, 409, { error: "WhatsApp todavía no está conectado" });
-      const requested = Array.isArray(body.jids) ? body.jids.slice(0, 150).filter(jid =>
-        typeof jid === "string" && jid.endsWith("@lid") && allowedJid(jid)) : [];
-      const events = [];
-      for (const jid of requested) {
-        let mapped = null;
-        try {
-          mapped = await session.sock?.signalRepository?.lidMapping?.getPNForLID?.(jid);
-        } catch (err) {
-          logger.warn({ error: String(err) }, "LID mapping lookup failed");
-        }
-        const phoneJid = knownPhone(mapped);
-        const senderName = String(session.names?.get(jid) ||
-          (phoneJid ? session.names?.get(phoneJid) : "") || "").slice(0, 120);
-        if (phoneJid || senderName)
-          events.push({ kind: "contact", remoteJid: jid, phoneJid, senderName });
-      }
-      await appendEvents(ownerId, events);
-      return send(res, 200, { checked: requested.length, resolved: events.length });
+      const requested = Array.isArray(body.jids) ? body.jids.slice(0, 150) : [];
+      const resolved = await resolveContactsFromStore(session, requested);
+      return send(res, 200, { checked: requested.length, resolved });
     }
     if (rawPath.pathname === "/v1/connect" && req.method === "POST") {
       const instance = await start(ownerId);
@@ -479,6 +524,10 @@ http.createServer(async (req, res) => {
     return send(res, 500, { error, code });
   }
 }).listen(PORT, "0.0.0.0", () => logger.info("Private WhatsApp bridge listening"));
+const backgroundTimer = setInterval(() => {
+  for (const ownerId of sessions.keys()) void flushPrivateJournal(ownerId);
+}, 1200);
+backgroundTimer.unref();
 for (const item of await fs.readdir(BASE, { withFileTypes: true })) {
   if (item.isDirectory() && uuid(item.name)) {
     // Only user-UUID directories persisted by the CRM can be resumed.
