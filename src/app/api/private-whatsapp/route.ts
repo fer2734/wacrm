@@ -60,6 +60,14 @@ export async function POST(request: Request) {
     }
     return proxy("/v1/connect", "POST", ctx.user.id);
   }
+  if (action === "reset") {
+    const { data: inbox, error } = await ctx.supabase
+      .from("private_whatsapp_inboxes").select("id")
+      .eq("owner_user_id", ctx.user.id).maybeSingle();
+    if (error) return NextResponse.json({ error: "No se pudo verificar la bandeja privada" }, { status: 500 });
+    if (!inbox) return NextResponse.json({ error: "Tu bandeja privada no está creada" }, { status: 404 });
+    return proxy("/v1/reset-pairing", "POST", ctx.user.id);
+  }
   if (action === "disconnect") return proxy("/v1/disconnect", "POST", ctx.user.id);
   if (action === "send") {
     const remoteJid = typeof body.remoteJid === "string" ? body.remoteJid : "";
