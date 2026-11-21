@@ -31,7 +31,7 @@ async function setStatus(ownerId, state, phone) {
 }
 async function inbox(ownerId) {
   const { data, error } = await db.from("private_whatsapp_inboxes")
-    .select("id,owner_user_id").eq("owner_user_id", ownerId).maybeSingle();
+    .select("id,owner_user_id,connection_status,connected_phone").eq("owner_user_id", ownerId).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -44,7 +44,7 @@ function extractText(message) {
 }
 async function saveMessage(ownerId, msg) {
   const jid = msg.key?.remoteJid;
-  if (!jid || !/^\\d{6,18}@s\\.whatsapp\\.net$/.test(jid) || !msg.key?.id || !msg.message) return;
+  if (!jid || !/^\d{6,18}@s\.whatsapp\.net$/.test(jid) || !msg.key?.id || !msg.message) return;
   const box = await inbox(ownerId);
   if (!box) return;
   const text = String(extractText(msg.message)).slice(0, 10000);
@@ -194,7 +194,7 @@ http.createServer(async (req, res) => {
       if (!instance || instance.status !== "connected" || !instance.sock)
         return send(res, 409, { error: "WhatsApp no está conectado" });
       if (typeof body.text !== "string" || !body.text.trim() || body.text.length > 4000 ||
-          typeof body.remoteJid !== "string" || !/^\\d{6,18}@s\\.whatsapp\\.net$/.test(body.remoteJid))
+          typeof body.remoteJid !== "string" || !/^\d{6,18}@s\.whatsapp\.net$/.test(body.remoteJid))
         return send(res, 400, { error: "Mensaje o número inválido" });
       const msg = await instance.sock.sendMessage(body.remoteJid, { text: body.text.trim() });
       if (msg) await saveMessage(ownerId, msg);
