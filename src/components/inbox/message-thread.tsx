@@ -3,6 +3,7 @@ import {useContactAliases} from "@/hooks/use-contact-aliases";
 
 import {es} from "date-fns/locale";
 import { ConversationStage } from "./conversation-stage";
+import { ConversationNotes } from "./conversation-notes";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -31,6 +32,8 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  Copy,
+  Pencil,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -79,6 +82,8 @@ import {
 } from "@/lib/inbox/optimistic-messages";
 
 const MESSAGE_PAGE_SIZE = 200;
+// This CRM tracks sales while advisors answer via their own WhatsApp numbers.
+const USE_PERSONAL_WHATSAPP_ONLY = true;
 
 interface ReplyDraft {
   id: string;
@@ -194,6 +199,7 @@ export function MessageThread({
   const {aliases}=useContactAliases();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
+  const [notesEditSignal, setNotesEditSignal] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const [olderPages, setOlderPages] = useState<{
@@ -975,6 +981,7 @@ export function MessageThread({
   }
 
   const displayName = aliases[contact.id] || contact.name || contactHandle(contact);
+  const phoneNumber = contact.phone || "";
   const messageGroups = groupMessagesByDate(messages);
   const assignedAgentId = conversation.assigned_agent_id ?? null;
   const currentAssignee = profiles.find((p) => p.user_id === assignedAgentId);
@@ -1012,10 +1019,19 @@ export function MessageThread({
             {displayName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">
-              {contactHandle(contact)}
-            </p>
+            <button type="button" onClick={() => setNotesEditSignal(n => n + 1)}
+              title="Agregar nota a este cliente"
+              className="flex min-w-0 items-center gap-1 text-left text-sm font-semibold text-foreground hover:text-primary">
+              <span className="truncate">{displayName}</span><Pencil className="size-3 shrink-0" />
+            </button>
+            <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              <span className="truncate">{contactHandle(contact)}</span>
+              {phoneNumber && <button type="button" className="inline-flex size-7 shrink-0 items-center justify-center rounded text-primary hover:bg-muted"
+                aria-label="Copiar teléfono" title="Copiar teléfono"
+                onClick={() => void navigator.clipboard.writeText(phoneNumber).then(() => toast.success("Teléfono copiado")).catch(() => toast.error("No se pudo copiar el teléfono"))}>
+                <Copy className="size-3.5" />
+              </button>}
+            </div>
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}
@@ -1149,6 +1165,7 @@ export function MessageThread({
       </div>
 
       <ConversationStage key={conversation.id} conversationId={conversation.id} />
+      <ConversationNotes key={contact.id} contactId={contact.id} editSignal={notesEditSignal} />
 
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
@@ -1254,8 +1271,8 @@ export function MessageThread({
         }}
       />
 
-      {/* Composer */}
-      {isAgent && assignedAgentId ? <div className="border-t border-border bg-card p-3 text-center"><p className="mb-2 text-sm">Continuá el seguimiento desde tu propio WhatsApp y registrá las novedades en las notas.</p>{contact.phone && <a href={`https://wa.me/${contact.phone.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">Abrir en mi WhatsApp</a>}</div> : <MessageComposer
+      {/* Messaging from CRM is disabled for this personal-number workflow. */}
+      {USE_PERSONAL_WHATSAPP_ONLY || (isAgent && assignedAgentId) ? <div className="border-t border-border bg-card px-3 py-2 text-center"><p className="mb-1 text-xs text-muted-foreground">Respondé desde tu WhatsApp y guardá las novedades en las notas.</p>{phoneNumber && <a href={`https://wa.me/${phoneNumber.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">Abrir en mi WhatsApp</a>}</div> : <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
         onSend={handleSend}
