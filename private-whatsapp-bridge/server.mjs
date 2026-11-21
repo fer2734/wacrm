@@ -4,17 +4,14 @@ import path from "node:path";
 import makeWASocket, { DisconnectReason, useMultiFileAuthState } from "@whiskeysockets/baileys";
 import pino from "pino";
 import QRCode from "qrcode";
-import { createClient } from "@supabase/supabase-js";
 
 const PORT = Number(process.env.PORT || 3081);
 const BASE = process.env.SESSION_DIR || "/data/wa-sessions";
 const secret = process.env.PRIVATE_WA_BRIDGE_KEY;
-const dbUrl = process.env.SUPABASE_URL;
-const dbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!secret || secret.length < 32 || !dbUrl || !dbKey) {
-  throw new Error("Missing bridge secret or database configuration.");
+const callbackUrl = process.env.CRM_CALLBACK_URL;
+if (!secret || secret.length < 32 || !callbackUrl || !callbackUrl.startsWith("https://")) {
+  throw new Error("Missing private WhatsApp key or authenticated CRM callback URL.");
 }
-const db = createClient(dbUrl, dbKey, { auth: { persistSession: false } });
 const sessions = new Map();
 const logger = pino({ level: process.env.LOG_LEVEL || "warn" });
 const uuid = value => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -23,17 +20,24 @@ function send(res, status, data) {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
   res.end(JSON.stringify(data));
 }
-async function setStatus(ownerId, state, phone) {
-  const patch = { connection_status: state, updated_at: new Date().toISOString() };
-  if (phone !== undefined) patch.connected_phone = phone;
-  const { error } = await db.from("private_whatsapp_inboxes").update(patch).eq("owner_user_id", ownerId);
-  if (error) logger.warn({ message: error.message }, "Could not update private WhatsApp status");
+async function crm(action, payload) {
+  const response = await fetch(callbackUrl, {
+    method: "POST",
+    headers: { "x-bridge-key": secret, "content-type": "application/json" },
+    body: JSON.stringify({ action, ...payload }),
+    signal: AbortSignal.timeout(12000)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "CRM private callback failed: " + response.status);
+  return data;
+}
+async function setStatus(ownerId, status, phone) {
+  try { await crm("status", { ownerId, status, ...(phone !== undefined ? { phone } : {}) }); }
+  catch (err) { logger.warn({ error: String(err) }, "Could not sync WhatsApp status"); }
 }
 async function inbox(ownerId) {
-  const { data, error } = await db.from("private_whatsapp_inboxes")
-    .select("id,owner_user_id,connection_status,connected_phone").eq("owner_user_id", ownerId).maybeSingle();
-  if (error) throw error;
-  return data;
+  const result = await crm("inbox", { ownerId });
+  return result.inbox || null;
 }
 function extractText(message) {
   const m = message?.ephemeralMessage?.message || message?.viewOnceMessage?.message || message || {};
@@ -44,46 +48,15 @@ function extractText(message) {
 }
 async function saveMessage(ownerId, msg) {
   const jid = msg.key?.remoteJid;
-  if (!jid || !/^\d{6,18}@s\.whatsapp\.net$/.test(jid) || !msg.key?.id || !msg.message) return;
-  const box = await inbox(ownerId);
-  if (!box) return;
+  if (!jid || !/^\\d{6,18}@s\\.whatsapp\\.net$/.test(jid) || !msg.key?.id || !msg.message) return;
   const text = String(extractText(msg.message)).slice(0, 10000);
   const senderName = typeof msg.pushName === "string" ? msg.pushName.slice(0, 180) : "";
   const ts = Number(msg.messageTimestamp?.toString?.() || msg.messageTimestamp || 0);
   const sentAt = ts > 0 && Number.isFinite(ts) ? new Date(ts * 1000).toISOString() : new Date().toISOString();
-  const { data: previous } = await db.from("private_whatsapp_chats")
-    .select("id,contact_name,unread_count,last_message_at").eq("inbox_id", box.id)
-    .eq("remote_jid", jid).maybeSingle();
-  let chatId = previous?.id;
-  if (!chatId) {
-    const { data, error } = await db.from("private_whatsapp_chats").upsert({
-      inbox_id: box.id, owner_user_id: ownerId, remote_jid: jid,
-      contact_name: senderName || jid.split("@")[0], last_message_text: text,
-      last_message_at: sentAt
-    }, { onConflict: "inbox_id,remote_jid", ignoreDuplicates: true }).select("id").maybeSingle();
-    if (error) throw error;
-    if (!data) {
-      const { data: resolved } = await db.from("private_whatsapp_chats").select("id")
-        .eq("inbox_id", box.id).eq("remote_jid", jid).single();
-      chatId = resolved?.id;
-    } else chatId = data.id;
-  }
-  if (!chatId) return;
-  const { data: inserted, error } = await db.from("private_whatsapp_messages").upsert({
-    chat_id: chatId, inbox_id: box.id, owner_user_id: ownerId,
-    whatsapp_message_id: msg.key.id, from_me: !!msg.key.fromMe,
-    message_text: text, message_type: "text", sent_at: sentAt
-  }, { onConflict: "chat_id,whatsapp_message_id", ignoreDuplicates: true })
-    .select("id").maybeSingle();
-  if (error) throw error;
-  if (inserted) {
-    const newer = !previous?.last_message_at || new Date(sentAt) >= new Date(previous.last_message_at);
-    await db.from("private_whatsapp_chats").update({
-      ...(newer ? { last_message_text: text, last_message_at: sentAt } : {}),
-      ...(senderName && !previous?.contact_name ? { contact_name: senderName } : {}),
-      unread_count: (previous?.unread_count || 0) + (msg.key.fromMe ? 0 : 1)
-    }).eq("id", chatId).eq("owner_user_id", ownerId);
-  }
+  await crm("message", {
+    ownerId, remoteJid: jid, whatsappMessageId: msg.key.id,
+    fromMe: !!msg.key.fromMe, text, senderName, sentAt
+  });
 }
 async function start(ownerId) {
   const prev = sessions.get(ownerId);
