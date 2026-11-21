@@ -1,7 +1,7 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
-import makeWASocket, { DisconnectReason, useMultiFileAuthState } from "@whiskeysockets/baileys";
+import makeWASocket, { DisconnectReason, useMultiFileAuthState as loadWhatsAppAuthState } from "@whiskeysockets/baileys";
 import pino from "pino";
 import QRCode from "qrcode";
 
@@ -63,7 +63,7 @@ async function start(ownerId) {
   if (prev && ["connecting", "qr", "connected"].includes(prev.status)) return prev;
   const folder = path.join(BASE, ownerId);
   await fs.mkdir(folder, { recursive: true, mode: 0o700 });
-  const { state, saveCreds } = await useMultiFileAuthState(folder);
+  const { state, saveCreds } = await loadWhatsAppAuthState(folder);
   const session = { sock: null, status: "connecting", qr: null, phone: null, restarting: false };
   sessions.set(ownerId, session);
   const sock = makeWASocket({

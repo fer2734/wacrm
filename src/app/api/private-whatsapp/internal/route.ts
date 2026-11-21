@@ -66,10 +66,11 @@ export async function POST(request: Request) {
       const date = typeof payload.sentAt === "string" && !Number.isNaN(Date.parse(payload.sentAt))
         ? new Date(payload.sentAt).toISOString() : new Date().toISOString();
 
-      let { data: chat, error: chatError } = await db.from("private_whatsapp_chats")
+      const { data: initialChat, error: chatError } = await db.from("private_whatsapp_chats")
         .select("id,contact_name,last_message_at,unread_count")
         .eq("owner_user_id", ownerId).eq("inbox_id", inbox.id).eq("remote_jid", jid).maybeSingle();
       if (chatError) throw chatError;
+      let chat = initialChat;
       if (!chat) {
         const { error: createError } = await db.from("private_whatsapp_chats").upsert({
           inbox_id: inbox.id, owner_user_id: ownerId, remote_jid: jid,
