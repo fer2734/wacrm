@@ -177,7 +177,12 @@ async function start(ownerId) {
   }
   session.sock = sock;
   const names = new Map();
-  sock.ev.on("creds.update", saveCreds);
+  sock.ev.on("creds.update", async () => {
+    // A cancelled pairing must not re-create auth files after Nuevo QR
+    // has removed them.
+    if (sessions.get(ownerId) !== session) return;
+    await saveCreds();
+  });
   sock.ev.on("contacts.upsert", contacts => {
     // Contacts are NOT chat threads. Avoid filling the inbox with
     // the user's entire address book; only chats/events create threads.
