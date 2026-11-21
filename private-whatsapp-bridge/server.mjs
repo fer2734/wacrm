@@ -165,7 +165,9 @@ async function start(ownerId) {
     sessions.delete(ownerId);
     try { prev.sock?.end(undefined); } catch {}
   }
-  const folder = path.join(BASE, ownerId);
+  // Fresh V2 WhatsApp auth state, isolated from previous failed attempts.
+  // The event journal stays at BASE/ownerId/events.jsonl for recovery.
+  const folder = path.join(BASE, ownerId, "auth-v2");
   try {
     await fs.mkdir(folder, { recursive: true, mode: 0o700 });
   } catch (err) {
