@@ -1,7 +1,7 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
-import makeWASocket, { Browsers, DisconnectReason, useMultiFileAuthState as loadWhatsAppAuthState } from "@whiskeysockets/baileys";
+import makeWASocket, { Browsers, DisconnectReason, fetchLatestWaWebVersion, useMultiFileAuthState as loadWhatsAppAuthState } from "@whiskeysockets/baileys";
 import pino from "pino";
 import QRCode from "qrcode";
 
@@ -13,6 +13,19 @@ if (!secret || secret.length < 32 || !callbackUrl || !(/^(https:\/\/[^/]+|http:\
   throw new Error("Missing private WhatsApp key or authenticated CRM callback URL.");
 }
 const sessions = new Map();
+const pairingAttempts = new Map();
+const MAX_PAIRED_RETRIES = 4;
+const QR_WAIT_MS = 30000;
+const explainCode = code => {
+  if (code === 401) return "WhatsApp cerró la sesión (401). Generá un nuevo QR.";
+  if (code === 405) return "WhatsApp rechazó la versión del cliente (405). Revisá la versión de WhatsApp Web.";
+  if (code === 428) return "WhatsApp interrumpió la conexión antes del QR (428). Generá un nuevo QR.";
+  if (code === 515) return "WhatsApp solicitó reiniciar la conexión después de vincular el dispositivo.";
+  if (code === 403) return "WhatsApp rechazó la vinculación (403). Revisá los dispositivos vinculados.";
+  if (code === 408) return "La conexión expiró antes de vincular el dispositivo (408).";
+  return code ? "WhatsApp cerró la conexión (código " + code + "). Probá generar un QR nuevo." :
+    "WhatsApp cerró la conexión antes de completar la vinculación.";
+};
 // Keep WhatsApp events in a durable per-user journal; the authenticated
 // CRM pulls and commits them. Failed callbacks cannot discard messages.
 const appendInFlight = new Map();
@@ -135,6 +148,7 @@ async function clearPairingCredentials(ownerId) {
 }
 async function restartPairing(ownerId) {
   const current = sessions.get(ownerId);
+  pairingAttempts.delete(ownerId);
   sessions.delete(ownerId);
   if (current?.sock) {
     try { current.sock.end(undefined); } catch {}
@@ -145,7 +159,12 @@ async function restartPairing(ownerId) {
 }
 async function start(ownerId) {
   const prev = sessions.get(ownerId);
-  if (prev && ["connecting", "qr", "connected"].includes(prev.status)) return prev;
+  if (prev?.status === "connected" || (prev?.status === "qr" && prev.qr) ||
+      (prev?.status === "connecting" && Date.now() - prev.startedAt < QR_WAIT_MS)) return prev;
+  if (prev) {
+    sessions.delete(ownerId);
+    try { prev.sock?.end(undefined); } catch {}
+  }
   const folder = path.join(BASE, ownerId);
   try {
     await fs.mkdir(folder, { recursive: true, mode: 0o700 });
@@ -160,22 +179,40 @@ async function start(ownerId) {
     logger.error({ error: String(err) }, "Cannot read WhatsApp session authentication");
     throw Object.assign(new Error("No se pudo abrir la sesión de WhatsApp"), { code: "SESSION_AUTH" });
   }
-  const session = { sock: null, status: "connecting", qr: null, phone: null, restarting: false, startedAt: Date.now(), lastError: null };
+  const session = { sock: null, status: "connecting", qr: null, phone: null, startedAt: Date.now(), lastError: null, lastCode: null, lastCloseAt: null, authReady: !!state.creds?.registered, version: null };
   sessions.set(ownerId, session);
   let sock;
   try {
+    // Both the current WhatsApp Web version and WEB_BROWSER identity matter:
+    // the legacy macOS Desktop identity is rejected before QR by WA (428).
+    const latest = await fetchLatestWaWebVersion();
+    if (!Array.isArray(latest?.version) || latest.version.length !== 3 ||
+        !latest.version.every(Number.isSafeInteger)) {
+      throw new Error("Invalid WhatsApp Web version response");
+    }
+    session.version = latest.version.join(".");
     sock = makeWASocket({
-      auth: state, logger, printQRInTerminal: false,
-      browser: Browsers.macOS("Desktop"),
+      auth: state,
+      logger,
+      version: latest.version,
+      browser: Browsers.ubuntu("Chrome"),
       syncFullHistory: true,
       markOnlineOnConnect: false
     });
   } catch (err) {
-    sessions.delete(ownerId);
+    if (sessions.get(ownerId) === session) sessions.delete(ownerId);
     logger.error({ error: String(err) }, "WhatsApp Web socket failed to initialize");
-    throw Object.assign(new Error("No se pudo iniciar el cliente WhatsApp Web"), { code: "WA_SOCKET_INIT" });
+    throw Object.assign(new Error("No se pudo iniciar WhatsApp Web: " + String(err instanceof Error ? err.message : err).slice(0, 120)), { code: "WA_SOCKET_INIT" });
   }
   session.sock = sock;
+  const qrTimeout = setTimeout(() => {
+    if (sessions.get(ownerId) !== session || session.status !== "connecting") return;
+    session.status = "failed";
+    session.lastCode = "QR_TIMEOUT";
+    session.lastError = "No llegó un QR después de 30 segundos. Tocá Nuevo QR para reintentar.";
+    try { sock.end(undefined); } catch {}
+    void setStatus(ownerId, "disconnected");
+  }, QR_WAIT_MS);
   const names = new Map();
   sock.ev.on("creds.update", async () => {
     // A cancelled pairing must not re-create auth files after Nuevo QR
@@ -230,45 +267,68 @@ async function start(ownerId) {
   sock.ev.on("connection.update", async update => {
     if (sessions.get(ownerId) !== session) return;
     if (update.qr) {
+      clearTimeout(qrTimeout);
       try {
         session.qr = await QRCode.toDataURL(update.qr, { width: 300, margin: 2 });
         if (sessions.get(ownerId) !== session) return;
         session.status = "qr";
         session.lastError = null;
+        session.lastCode = null;
         await setStatus(ownerId, "qr");
       } catch (err) {
         session.qr = null;
-        session.status = "disconnected";
-        session.lastError = "No se pudo generar el código QR. Usá Nuevo QR para reintentar.";
+        session.status = "failed";
+        session.lastCode = "QR_RENDER";
+        session.lastError = "No se pudo dibujar el código QR. Tocá Nuevo QR.";
         logger.error({ error: String(err) }, "Private QR render failed");
         await setStatus(ownerId, "disconnected");
       }
     }
     if (update.connection === "open") {
+      clearTimeout(qrTimeout);
       session.status = "connected";
       session.qr = null;
+      session.lastError = null;
+      session.lastCode = null;
+      session.authReady = true;
+      pairingAttempts.delete(ownerId);
       session.phone = sock.user?.id?.split(":")[0]?.split("@")[0] || null;
       await setStatus(ownerId, "connected", session.phone);
     }
     if (update.connection === "close") {
+      clearTimeout(qrTimeout);
       session.qr = null;
-      session.status = "disconnected";
+      session.status = "failed";
+      session.lastCloseAt = new Date().toISOString();
+      const reason = update.lastDisconnect?.error?.output?.statusCode || null;
+      session.lastCode = reason;
+      session.lastError = explainCode(reason);
+      logger.warn({ reason, paired: !!state.creds?.registered }, "WhatsApp socket closed");
       await setStatus(ownerId, "disconnected");
-      const reason = update.lastDisconnect?.error?.output?.statusCode;
-      const authenticated = !!state.creds.registered;
-      session.lastError = !authenticated
-        ? "No se completó la vinculación. Tocá Nuevo QR para generar otro código."
-        : "El dispositivo se desconectó. Podés intentar vincularlo nuevamente.";
+      if (sessions.get(ownerId) !== session) return;
       if (reason === DisconnectReason.loggedOut) {
         sessions.delete(ownerId);
         await clearPairingCredentials(ownerId);
+        session.status = "not_connected";
+        session.lastError = explainCode(401);
         await setStatus(ownerId, "not_connected", null);
-      } else if (authenticated && !session.restarting) {
-        // Retry an already paired device, but never leave an unpaired
-        // session in an infinite "connecting" loop with no QR.
-        session.restarting = true;
-        sessions.delete(ownerId);
-        setTimeout(() => { void start(ownerId).catch(err => logger.error(String(err))); }, 4000);
+      } else if (reason === DisconnectReason.restartRequired ||
+                 (state.creds?.registered && reason !== 403 && reason !== 405 && reason !== 428)) {
+        // 515 is expected after QR is scanned. Reconnect with saved
+        // credentials instead of demanding a second pairing.
+        const count = (pairingAttempts.get(ownerId) || 0) + 1;
+        pairingAttempts.set(ownerId, count);
+        if (count <= MAX_PAIRED_RETRIES) {
+          sessions.delete(ownerId);
+          const delay = reason === DisconnectReason.restartRequired ? 300 : Math.min(7000, count * 1700);
+          setTimeout(() => {
+            void start(ownerId).catch(err => {
+              logger.error({ error: String(err) }, "WhatsApp reconnect failure");
+            });
+          }, delay);
+        } else {
+          session.lastError = "No fue posible reconectar después de varios intentos. Usá Nuevo QR.";
+        }
       }
     }
   });
@@ -282,6 +342,7 @@ async function unlink(ownerId) {
     try { session.sock.end(undefined); } catch {}
   }
   await clearPairingCredentials(ownerId);
+  pairingAttempts.delete(ownerId);
   await setStatus(ownerId, "not_connected", null);
 }
 async function readJson(req) {
@@ -317,6 +378,9 @@ http.createServer(async (req, res) => {
         historyProgress: instance?.historyProgress ?? null,
         historyFinished: !!instance?.historyFinished,
         lastError: instance?.lastError || null,
+        lastCode: instance?.lastCode || null,
+        lastCloseAt: instance?.lastCloseAt || null,
+        version: instance?.version || null,
         connectingSeconds: instance?.status === "connecting"
           ? Math.floor((Date.now() - instance.startedAt) / 1000) : 0
       });
