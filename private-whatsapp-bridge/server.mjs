@@ -153,9 +153,28 @@ async function start(ownerId) {
   const names = new Map();
   sock.ev.on("creds.update", saveCreds);
   sock.ev.on("contacts.upsert", contacts => {
+    const headers = [];
     for (const c of contacts || []) {
-      if (c.id && (c.name || c.notify)) names.set(c.id, String(c.name || c.notify));
+      if (c.id && (c.name || c.notify)) {
+        const display = String(c.name || c.notify).slice(0, 180);
+        names.set(c.id, display);
+        if (allowedJid(c.id)) headers.push({ kind: "chat", remoteJid: c.id, senderName: display });
+      }
     }
+    void appendEvents(ownerId, headers).catch(err => {
+      session.lastError = "No se pudieron guardar nombres de contactos";
+      logger.warn({ error: String(err) }, "Private WhatsApp contacts journal failed");
+    });
+  });
+  sock.ev.on("chats.upsert", chats => {
+    const headers = (chats || []).filter(c => allowedJid(c.id)).map(c => ({
+      kind: "chat", remoteJid: c.id,
+      senderName: String(names.get(c.id) || c.name || c.id.split("@")[0]).slice(0, 180)
+    }));
+    void appendEvents(ownerId, headers).catch(err => {
+      session.lastError = "No se pudo guardar el listado de chats";
+      logger.warn({ error: String(err) }, "Private WhatsApp chat headers journal failed");
+    });
   });
   sock.ev.on("messaging-history.set", async ({ chats, contacts, messages, isLatest, progress }) => {
     try {
