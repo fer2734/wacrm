@@ -14,7 +14,7 @@ function backend() {
   const base = process.env.PRIVATE_WA_BRIDGE_URL;
   const key = process.env.PRIVATE_WA_BRIDGE_KEY;
   if (!base || !key) return null;
-  return { base: base.replace(/\\/$/, ""), key };
+  return { base: base.endsWith("/") ? base.slice(0, -1) : base, key };
 }
 async function proxy(path: string, method: "GET" | "POST", userId: string, payload?: Record<string, unknown>) {
   const bridge = backend();
@@ -64,7 +64,7 @@ export async function POST(request: Request) {
   if (action === "send") {
     const remoteJid = typeof body.remoteJid === "string" ? body.remoteJid : "";
     const text = typeof body.text === "string" ? body.text.trim() : "";
-    if (!/^\\d{6,18}@s\\.whatsapp\\.net$/.test(remoteJid) || !text || text.length > 4000)
+    if (!/^\d{6,18}@s\.whatsapp\.net$/.test(remoteJid) || !text || text.length > 4000)
       return NextResponse.json({ error: "Destinatario o mensaje incorrecto" }, { status: 400 });
     const { data: inbox } = await ctx.supabase
       .from("private_whatsapp_inboxes").select("id")
