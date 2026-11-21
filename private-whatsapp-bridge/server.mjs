@@ -153,18 +153,12 @@ async function start(ownerId) {
   const names = new Map();
   sock.ev.on("creds.update", saveCreds);
   sock.ev.on("contacts.upsert", contacts => {
-    const headers = [];
+    // Contacts are NOT chat threads. Avoid filling the inbox with
+    // the user's entire address book; only chats/events create threads.
     for (const c of contacts || []) {
-      if (c.id && (c.name || c.notify)) {
-        const display = String(c.name || c.notify).slice(0, 180);
-        names.set(c.id, display);
-        if (allowedJid(c.id)) headers.push({ kind: "chat", remoteJid: c.id, senderName: display });
-      }
+      if (c.id && (c.name || c.notify))
+        names.set(c.id, String(c.name || c.notify).slice(0, 180));
     }
-    void appendEvents(ownerId, headers).catch(err => {
-      session.lastError = "No se pudieron guardar nombres de contactos";
-      logger.warn({ error: String(err) }, "Private WhatsApp contacts journal failed");
-    });
   });
   sock.ev.on("chats.upsert", chats => {
     const headers = (chats || []).filter(c => allowedJid(c.id)).map(c => ({
