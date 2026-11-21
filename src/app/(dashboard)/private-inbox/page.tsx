@@ -75,7 +75,7 @@ export default function PrivateInboxPage() {
     let query = createClient().from("private_whatsapp_chats")
       .select("id,remote_jid,contact_name,display_name_override,phone_jid,stage_id,last_message_text,last_message_at,unread_count", { count: "exact" })
       .eq("inbox_id", inbox.id);
-    const search = chatSearch.trim().replace(/[^\\p{L}\\p{N} +@._-]/gu, "").slice(0, 50);
+    const search = chatSearch.trim().replace(/[^\p{L}\p{N} +@._-]/gu, "").slice(0, 50);
     if (search) {
       query = query.or([
         "contact_name.ilike.%" + search + "%",
