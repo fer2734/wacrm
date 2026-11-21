@@ -47,6 +47,7 @@ export default function PrivateInboxPage() {
   const [editingContactName, setEditingContactName] = useState(false);
   const [contactNameDraft, setContactNameDraft] = useState("");
   const [updatingContact, setUpdatingContact] = useState(false);
+  const [resolvingNames, setResolvingNames] = useState(false);
   const [syncProgress, setSyncProgress] = useState({ offset: 0, total: 0, hasMore: false });
   const [selected, setSelected] = useState<string | null>(null);
   const [messages, setMessages] = useState<PrivateMessage[]>([]);
@@ -245,6 +246,22 @@ export default function PrivateInboxPage() {
     } finally { setBusy(false); }
   }
 
+  async function refreshContactNames() {
+    if (resolvingNames || !connection.ready) return;
+    setResolvingNames(true);
+    try {
+      const response = await fetch("/api/private-whatsapp/contacts", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "No se pudieron actualizar contactos");
+      if (result.resolved)
+        toast.success("WhatsApp aportó datos de " + result.resolved + " contactos. Se actualizarán en la bandeja.");
+      else
+        toast.info("WhatsApp no aportó números nuevos. Podés editar el nombre desde cada conversación.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudieron consultar contactos");
+    } finally { setResolvingNames(false); }
+  }
+
   async function changeStage(chat: PrivateChat, stageId: string) {
     if (!user) return;
     const { error } = await createClient().from("private_whatsapp_chats")
@@ -341,6 +358,15 @@ export default function PrivateInboxPage() {
             {connection.historyEvents ? " · Historial detectado: " + connection.historyEvents : ""}
           </p>
           <div className="flex items-center gap-1">
+            {connected && (
+              <button type="button" disabled={resolvingNames}
+                onClick={() => void refreshContactNames()}
+                title="Buscar nombres y números disponibles en WhatsApp"
+                className="inline-flex min-h-8 items-center gap-1 rounded-md border border-border px-2 text-[11px] text-muted-foreground hover:bg-muted disabled:opacity-50">
+                <RefreshCw className={`size-3.5 ${resolvingNames ? "animate-spin" : ""}`} />
+                <span className="hidden lg:inline">Actualizar contactos</span>
+              </button>
+            )}
             <button type="button" onClick={() => { void pollStatus(); void loadChats(); void loadMessages(); }}
               className="inline-flex size-8 items-center justify-center rounded-md border border-border hover:bg-muted" title="Actualizar">
               <RefreshCw className="size-4" />
