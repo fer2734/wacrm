@@ -12,7 +12,7 @@ import { applyInboxFilter, type InboxFilter } from "@/lib/inbox/inbox-filters";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
 import { Search, ChevronDown, X } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
@@ -47,6 +47,11 @@ const STATUS_COLORS: Record<ConversationStatus, string> = {
 };
 
 
+interface SalesStageLabel {
+  name: string;
+  color: string;
+}
+
 export function ConversationList({
   activeConversationId,
   onSelect,
@@ -75,6 +80,73 @@ export function ConversationList({
     return () => window.clearInterval(id);
   }, []);
   const [loading, setLoading] = useState(true);
+
+  // Sales stages are persisted on the opportunity (deals.stage_id), not
+  // on a device. Fetch them in bulk so every visible chat has one label.
+  const [salesStages, setSalesStages] = useState<Record<string, SalesStageLabel>>({});
+  const conversationIdsKey = useMemo(
+    () => conversations.map((conversation) => conversation.id).sort().join(","),
+    [conversations]
+  );
+
+  useEffect(() => {
+    if (!conversationIdsKey) return;
+    const supabase = createClient();
+    const conversationIds = conversationIdsKey.split(",");
+    let cancelled = false;
+
+    const refreshSalesStages = async () => {
+      const [dealsResult, stagesResult] = await Promise.all([
+        supabase
+          .from("deals")
+          .select("conversation_id,stage_id,created_at")
+          .in("conversation_id", conversationIds)
+          .order("created_at"),
+        supabase.from("pipeline_stages").select("id,name,color"),
+      ]);
+      if (cancelled) return;
+      if (dealsResult.error || stagesResult.error) {
+        console.error("Failed to load conversation sales stages:", {
+          deals: dealsResult.error?.message,
+          stages: stagesResult.error?.message,
+        });
+        return;
+      }
+      const stagesById = new Map<string, SalesStageLabel>(
+        (stagesResult.data ?? []).map((item) => [
+          item.id,
+          { name: item.name, color: item.color },
+        ])
+      );
+      const next: Record<string, SalesStageLabel> = {};
+      for (const deal of dealsResult.data ?? []) {
+        if (!deal.conversation_id || next[deal.conversation_id]) continue;
+        const selectedStage = stagesById.get(deal.stage_id);
+        if (selectedStage) next[deal.conversation_id] = selectedStage;
+      }
+      setSalesStages(next);
+    };
+
+    const refresh = () => { void refreshSalesStages(); };
+    refresh();
+    // The active conversation stage dispatches this event after a save.
+    window.addEventListener("wacrm:sales-stage-changed", refresh);
+    const channel = supabase
+      .channel(`inbox-sales-stages-${conversationIdsKey.slice(0, 20)}`)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "deals",
+      }, refresh)
+      .subscribe();
+    // Also reconcile when the browser misses a realtime event.
+    const timer = window.setInterval(refresh, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("wacrm:sales-stage-changed", refresh);
+      void supabase.removeChannel(channel);
+    };
+  }, [conversationIdsKey]);
+
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
   // Broadcast audience filtering. Company is an exact match on the field.
@@ -414,6 +486,7 @@ export function ConversationList({
               <ConversationItem
                 key={conv.id}
                 conversation={conv}
+                salesStage={salesStages[conv.id]}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
                 t={t}
@@ -428,6 +501,7 @@ export function ConversationList({
 
 interface ConversationItemProps {
   conversation: Conversation;
+  salesStage?: SalesStageLabel;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
   t: ReturnType<typeof useTranslations>;
@@ -435,6 +509,7 @@ interface ConversationItemProps {
 
 function ConversationItem({
   conversation,
+  salesStage,
   isActive,
   onSelect,
   t,
@@ -448,12 +523,17 @@ function ConversationItem({
     onSelect(conversation);
   }, [onSelect, conversation]);
 
-  const timeAgo = conversation.last_message_at
-    ? formatDistanceToNow(new Date(conversation.last_message_at), {
+  const validLastMessageDate = !!conversation.last_message_at &&
+    !Number.isNaN(Date.parse(conversation.last_message_at));
+  const timeAgo = validLastMessageDate
+    ? formatDistanceToNow(new Date(conversation.last_message_at!), {
         addSuffix: true,
         locale: es,
       })
     : "";
+  const lastMessageDate = validLastMessageDate
+    ? format(new Date(conversation.last_message_at!), "dd/MM/yy HH:mm", { locale: es })
+    : null;
 
   return (
     <button
@@ -484,6 +564,9 @@ function ConversationItem({
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
         </div>
+        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+          Último mensaje: {lastMessageDate ?? "Sin mensajes"}
+        </p>
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <p className="truncate text-xs text-muted-foreground">
             {conversation.last_message_text || t("noMessagesYet")}
@@ -502,6 +585,12 @@ function ConversationItem({
               title={conversation.status}
             />
           </div>
+        </div>
+        <div className="mt-1 flex min-w-0 items-center">
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground" title={salesStage?.name ?? "Sin estado de venta"}>
+            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: salesStage?.color ?? "var(--muted-foreground)" }} />
+            <span className="truncate">{salesStage?.name ?? "Sin estado de venta"}</span>
+          </span>
         </div>
         {!conversation.assigned_agent_id && conversation.status !== 'closed' && <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-400">{t('filterUnassigned')}</p>}
       </div>

@@ -50,6 +50,7 @@ export function ConversationStage({ conversationId }: { conversationId: string }
     setSaving(false);
     if (error) { toast.error(t("saveFailed")); return; }
     setStageId(next);
+    window.dispatchEvent(new Event("wacrm:sales-stage-changed"));
     toast.success(t("saved"));
   }
 
