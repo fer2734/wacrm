@@ -142,6 +142,7 @@ export function SalesCenter(){
  const documents=data.documents.filter(x=>x.sale_id===sale?.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
  const followups=data.followups.filter(x=>x.sale_id===sale?.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
  const application=data.applications.find(x=>x.sale_id===sale?.id)?.data||{};
+ useEffect(()=>{setContractFile(null);setPaymentFile(null);setProofFile(null);setPaymentInstallment("");setProofPayment("");},[sale?.id]);
  const person=(id:string)=>data.people.find(x=>x.user_id===id)?.full_name||"Asesor";
  const paid=(id:string)=>payments.filter(p=>p.installment_id===id&&p.status==="confirmado").reduce((a,p)=>a+Number(p.amount),0);
  const documentsFor=(kind:string)=>documents.filter(x=>x.kind===kind);
