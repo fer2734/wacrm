@@ -131,6 +131,7 @@ export default function PrivateInboxV2() {
       .eq("inbox_id", inbox.id).eq("chat_id", active.id)
       .order("sent_at", { ascending: false }).limit(messageLimit);
     if (!error) setMessages(((data || []) as Note[]).reverse());
+    setLoadingHistory(false);
   }, [inbox, active?.id, messageLimit]);
 
   const loadStages = useCallback(async () => {
@@ -271,6 +272,7 @@ export default function PrivateInboxV2() {
   }
 
   function openChat(chat: Chat) {
+    lastChatRef.current = null;
     setActive(chat);
     setMessageLimit(120);
     setMessages([]);
