@@ -141,45 +141,69 @@ export async function POST(request: Request) {
         chatIds.some(id => typeof id !== "string" || !validChat(id)) ||
         new Set(chatIds).size !== chatIds.length)
       return NextResponse.json({ error: "Lote de conversaciones inválido" }, { status: 400 });
-    // The overview may carry an old placeholder lastMessage. Read the real,
-    // latest available message from WhatsApp Web, not the overview timestamp.
+
+    // WEBJS's normalized WAMessage can omit "type" and "body" for some
+    // historical messages, while the original WhatsApp message still holds
+    // this metadata in _data. Classify it before claiming a preview is real.
     const entries = await Promise.all(chatIds.map(async chatId => {
       const response = await waha("/api/" + session + "/chats/" +
         encodeURIComponent(chatId) +
-        "/messages?limit=3&offset=0&sortBy=timestamp&sortOrder=desc&downloadMedia=false");
+        "/messages?limit=8&offset=0&sortBy=timestamp&sortOrder=desc&downloadMedia=false");
       if (!response.ok)
         return { chatId, status: "failed" };
+
       const payload = response.data;
-      const record = payload && typeof payload === "object"
+      const packet = payload && typeof payload === "object"
         ? payload as Record<string, unknown> : {};
       const messages: unknown[] = Array.isArray(payload) ? payload :
-        Array.isArray(record.messages) ? record.messages :
-        Array.isArray(record.data) ? record.data : [];
-      const valid = messages.filter(item => {
-        if (!item || typeof item !== "object") return false;
-        const row = item as Record<string, unknown>;
-        const stamp = Number(row.timestamp);
-        const seconds = stamp > 1e12 ? stamp / 1000 : stamp;
-        return Number.isFinite(seconds) &&
-          seconds > 1577836800 && seconds < Date.now() / 1000 + 300;
-      }).sort((a,b) => {
-        const left = Number((a as Record<string, unknown>).timestamp);
-        const right = Number((b as Record<string, unknown>).timestamp);
-        return right - left;
-      });
-      if (!valid.length) return { chatId, status: "unavailable" };
-      const msg = valid[0] as Record<string, unknown>;
-      const type = typeof msg.type === "string" ? msg.type : "chat";
-      const body = typeof msg.body === "string" ? msg.body :
-        typeof msg.caption === "string" ? msg.caption : "";
-      const id = typeof msg.id === "string" ? msg.id :
-        msg.id && typeof msg.id === "object" && typeof (msg.id as Record<string,unknown>)._serialized === "string"
-          ? (msg.id as Record<string,string>)._serialized : "";
-      return { chatId, status: "verified",
-        message: {
-          id, timestamp: Number(msg.timestamp), body: body.slice(0, 700),
-          type, hasMedia: msg.hasMedia === true, fromMe: msg.fromMe === true
-        }
+        Array.isArray(packet.messages) ? packet.messages :
+        Array.isArray(packet.data) ? packet.data : [];
+      const candidates = messages.flatMap(item => {
+        if (!item || typeof item !== "object") return [];
+        const msg = item as Record<string, unknown>;
+        const raw = msg._data && typeof msg._data === "object"
+          ? msg._data as Record<string, unknown> : {};
+        const candidateStamp = Number(msg.timestamp ?? raw.t ?? raw.timestamp);
+        const timestamp = candidateStamp > 1e12
+          ? candidateStamp / 1000 : candidateStamp;
+        if (!Number.isFinite(timestamp) || timestamp < 1577836800 ||
+            timestamp > Date.now() / 1000 + 300) return [];
+
+        const kind = typeof msg.type === "string" ? msg.type :
+          typeof raw.type === "string" ? raw.type : "";
+        const body = [msg.body, msg.caption, raw.body, raw.caption, raw.text]
+          .find(value => typeof value === "string" && value.trim()) as string | undefined;
+        const hasMedia = msg.hasMedia === true || raw.isMedia === true ||
+          typeof raw.directPath === "string" || typeof raw.mimetype === "string" ||
+          ["ptt", "audio", "image", "video", "sticker", "document", "location", "vcard"].includes(kind);
+        const normalizedType = kind || (hasMedia ? "media" : "unknown");
+        // Do not present protocol/notification placeholders as actual chats.
+        const excluded = ["e2e_notification", "notification", "gp2",
+          "protocol", "ciphertext", "revoked", "call_log"].includes(normalizedType);
+        const meaningful = Boolean(body) || hasMedia ||
+          ["location", "contact", "vcard", "poll_creation", "interactive"].includes(normalizedType);
+        const rawId = msg.id;
+        const id = typeof rawId === "string" ? rawId :
+          rawId && typeof rawId === "object" &&
+          typeof (rawId as Record<string, unknown>)._serialized === "string"
+            ? (rawId as Record<string, string>)._serialized : "";
+        return [{
+          id, timestamp, body: (body || "").slice(0, 700),
+          type: normalizedType, hasMedia, fromMe: msg.fromMe === true,
+          excluded, meaningful
+        }];
+      }).sort((left, right) => right.timestamp - left.timestamp);
+      const first = candidates.find(msg => !msg.excluded) || null;
+      if (!first) return { chatId, status: "unavailable" };
+      if (!first.meaningful) {
+        return { chatId, status: "incomplete",
+          timestamp: first.timestamp, messageType: first.type };
+      }
+      return {
+        chatId, status: "verified",
+        message: { id: first.id, timestamp: first.timestamp,
+          body: first.body, type: first.type, hasMedia: first.hasMedia,
+          fromMe: first.fromMe }
       };
     }));
     return NextResponse.json({ entries }, {
