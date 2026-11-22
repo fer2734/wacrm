@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
@@ -87,7 +87,7 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
  const [loaded,setLoaded]=useState(false);
  const [working,setWorking]=useState(false);
  const [data,setData]=useState<DB>(empty);
- const [tab,setTab]=useState(administration?"cobranzas":"cartera");
+ const [tab,setTab]=useState("cartera");
  const [selected,setSelected]=useState("");
  const [search,setSearch]=useState("");
  const [quotePrice,setQuotePrice]=useState(35000000);
@@ -195,7 +195,7 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
  const vehicleCost=(vehicleId:string)=>data.costs.filter(c=>c.vehicle_id===vehicleId).reduce((sum,c)=>sum+Number(c.cost),0);
  const totalCash=data.accounts.reduce((sum,a)=>sum+cashBalance(a.id),0);
  const menu=administration?[
-  ["cobranzas","💳 Cartera"],["tareas","📆 Gestiones"],["tesoreria","🏦 Caja y bancos"],
+  ["cartera","💳 Cartera"],["tareas","📆 Gestiones"],["tesoreria","🏦 Caja y bancos"],
   ["compras","🚘 Compras"],["comisiones","👥 Comisiones"],["entregas","🔑 Entregas"],
   ["ajustes","🧮 Planes"],["comprobantes","📎 Comprobantes"],["documentos","📄 Contratos / ARCA"],["reportes","📈 Reportes"]
  ]:[["cartera","💳 Mis clientes"],["tareas","📆 Tareas"],["cotizador","🧮 Cotizador"],["documentos","📄 Solicitudes"]];
@@ -477,13 +477,13 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
    <Panel title="Crear liquidación / comisión"><form className="grid grid-cols-2 gap-2" onSubmit={e=>handleForm(e,async f=>{
     const amount=n(f.get("amount"));
     await insert("erp_commissions",{account_id:accountId,created_by:user!.id,
-     sale_id:v(f.get("sale_id")),agent_id:v(f.get("agent_id")),concept:v(f.get("concept")),
+     sale_id:v(f.get("sale_id")),agent_id:data.sales.find(s=>s.id===v(f.get("sale_id")))?.agent_id||user!.id,concept:v(f.get("concept")),
      basis:v(f.get("basis")),rate_percent:v(f.get("rate_percent"))?n(f.get("rate_percent")):null,
      base_amount:v(f.get("base_amount"))?n(f.get("base_amount")):null,
      amount,due_date:v(f.get("due_date"))||null,notes:v(f.get("notes"))||null,status:"calculada"});
    },"Comisión registrada para revisión")}>
     <label className={label+" col-span-2"}>Operación<select className={input} name="sale_id" required>{data.sales.map(s=><option key={s.id} value={s.id}>{byName(s.customer_id)} · {s.vehicle_description}</option>)}</select></label>
-    <label className={label+" col-span-2"}>Asesor<select className={input} name="agent_id">{data.people.map(p=><option value={p.user_id} key={p.user_id}>{p.full_name||p.email}</option>)}</select></label>
+    <p className={"col-span-2 "+muted}>La comisión se asigna automáticamente al vendedor responsable de la operación.</p>
     <label className={label+" col-span-2"}>Concepto<input className={input} name="concept" placeholder="Ej: comisión de cuota 1" minLength={3} required/></label>
     <label className={label}>Base<select className={input} name="basis"><option value="manual">Manual</option><option value="cuota">Cuota</option><option value="venta">Venta</option><option value="gasto_carpeta">Gasto carpeta</option></select></label>
     <label className={label}>Fecha prevista<input className={input} name="due_date" type="date"/></label>
