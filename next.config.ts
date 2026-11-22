@@ -79,7 +79,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   experimental: {
     turbopackPluginRuntimeStrategy: "workerThreads",
-    cpus: 4,
+    // Stay within the 2 vCPU Hostinger KVM 2 allocation during builds.
+    cpus: 2,
   },
   // Stop `next dev` from overwriting the repo's hand-written AGENTS.md.
   agentRules: false,
