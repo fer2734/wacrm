@@ -56,6 +56,12 @@ export async function POST(request: Request) {
         p_events: payload.events
       });
       if (error) throw error;
+      if (!data?.conflict) {
+        const enriched = await db.rpc("apply_private_whatsapp_profiles", {
+          p_owner: ownerId, p_events: payload.events
+        });
+        if (enriched.error) console.warn("Private WhatsApp profile enrichment:", enriched.error.message);
+      }
       return NextResponse.json(data);
     }
     if (payload.action === "unresolved") {
