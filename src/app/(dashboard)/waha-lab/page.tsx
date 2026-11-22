@@ -174,8 +174,17 @@ export default function WahaLab() {
     setIndexError("");
     const collected = new Map<string, WaChat>();
     try {
-      for (let offset = 0; offset < 10000; offset += 200) {
-        const result = await json("/api/waha-lab?action=chats&limit=200&offset=" + offset);
+      let pageLimit = 200;
+      for (let offset = 0; offset < 10000;) {
+        let result: unknown;
+        try {
+          result = await json("/api/waha-lab?action=chats&limit=" + pageLimit + "&offset=" + offset);
+        } catch (error) {
+          // WEBJS can time out while building a large overview page. Retry
+          // the same offset in smaller pages rather than abandoning import.
+          if (pageLimit === 200) { pageLimit = 100; continue; }
+          throw error;
+        }
         const page = normalizedList(result);
         const rawRows: unknown[] = Array.isArray(result) ? result :
           result && Array.isArray(result.chats) ? result.chats :
@@ -184,11 +193,12 @@ export default function WahaLab() {
         for (const chat of page) collected.set(chat.id, chat);
         setIndexedChats([...collected.values()]);
         setIndexedCount(collected.size);
-        if (rawRows.length < 200) break;
+        if (rawRows.length < pageLimit) break;
         if (offset > 0 && collected.size === previousSize) {
           setIndexError("WAHA repitió la misma página. Podés reintentar la sincronización.");
           break;
         }
+        offset += pageLimit;
       }
     } catch (err) {
       setIndexError(err instanceof Error ? err.message : "No se pudieron recuperar los chats anteriores");
