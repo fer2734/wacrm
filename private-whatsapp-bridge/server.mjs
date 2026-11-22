@@ -206,6 +206,36 @@ async function flushPrivateJournal(ownerId) {
     ownerSyncInFlight.delete(ownerId);
   }
 }
+const profileBackfillActive = new Set();
+async function backfillProfileNames(ownerId) {
+  if (profileBackfillActive.has(ownerId)) return;
+  profileBackfillActive.add(ownerId);
+  let cursor = 0;
+  let requests = 0;
+  try {
+    // Historic events were persisted before the profile_name field
+    // existed. Replay only contact metadata, never duplicate messages.
+    while (requests < 400) {
+      const batch = await readEvents(ownerId, cursor);
+      if (!batch.events.length || batch.nextOffset === cursor) break;
+      const candidates = batch.events.filter(e => {
+        if (!e || !allowedJid(e.remoteJid)) return false;
+        if (e.kind !== "contact" && !(e.kind === "message" && !e.fromMe)) return false;
+        const name = String(e.profileName || e.senderName || "").trim();
+        return !!name && name.length < 121 && !/^[0-9]+$/.test(name);
+      });
+      if (candidates.length) await crm("profile-batch", { ownerId, events: candidates });
+      cursor = batch.nextOffset;
+      requests++;
+      if (!batch.hasMore) break;
+    }
+    logger.info({ ownerId, requests }, "Historical profile names checked");
+  } catch (err) {
+    logger.warn({ error: String(err) }, "Private profile name backfill incomplete");
+  } finally {
+    profileBackfillActive.delete(ownerId);
+  }
+}
 async function resolveContactsFromStore(session, jids) {
   if (!session || !session.sock || !Array.isArray(jids)) return 0;
   const events = [];
@@ -386,6 +416,7 @@ async function start(ownerId) {
       session.phone = sock.user?.id?.split(":")[0]?.split("@")[0] || null;
       await setStatus(ownerId, "connected", session.phone);
       void enrichKnownChats(ownerId, session);
+      void backfillProfileNames(ownerId);
       void flushPrivateJournal(ownerId);
     }
     if (update.connection === "close") {
