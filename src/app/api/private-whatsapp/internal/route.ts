@@ -64,6 +64,15 @@ export async function POST(request: Request) {
       }
       return NextResponse.json(data);
     }
+    if (payload.action === "profile-batch") {
+      if (!Array.isArray(payload.events) || payload.events.length > 800)
+        return NextResponse.json({ error: "Invalid profile batch" }, { status: 400 });
+      const { data, error } = await db.rpc("apply_private_whatsapp_profiles", {
+        p_owner: ownerId, p_events: payload.events
+      });
+      if (error) throw error;
+      return NextResponse.json({ enriched: Number(data || 0) });
+    }
     if (payload.action === "unresolved") {
       const { data, error } = await db.from("private_whatsapp_chats")
         .select("remote_jid").eq("owner_user_id", ownerId).eq("inbox_id", inbox.id)
