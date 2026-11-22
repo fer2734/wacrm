@@ -19,7 +19,7 @@ begin
   raise exception 'La unidad no pertenece a esta cuenta ERP';
  end if;
  return NEW;
-end; $;
+end; $$;
 revoke all on function public.erp_guard_vehicle_tenant() from public;
 create trigger erp_purchase_vehicle_tenant before insert or update of account_id,vehicle_id
 on public.erp_vehicle_purchases for each row execute function public.erp_guard_vehicle_tenant();
@@ -50,7 +50,7 @@ begin
    end if;
  end if;
  return NEW;
-end; $;
+end; $$;
 revoke all on function public.erp_guard_commission() from public;
 create trigger erp_commission_guard before insert or update
 on public.erp_commissions for each row execute function public.erp_guard_commission();
@@ -97,7 +97,7 @@ begin
  on conflict(sale_id) do update set
  status=excluded.status,planned_at=excluded.planned_at,delivered_at=excluded.delivered_at,
  notes=excluded.notes,updated_by=excluded.updated_by,updated_at=excluded.updated_at;
-end; $;
+end; $$;
 revoke all on function public.erp_save_delivery(uuid,text,text,date,date,text) from public;
 grant execute on function public.erp_save_delivery(uuid,text,text,date,date,text) to authenticated;
 
@@ -125,7 +125,7 @@ begin
  and coalesce((select sum(p.amount) from public.erp_payments p
    where p.installment_id=i.id and p.status='confirmado'),0)>=i.amount;
  return inserted_count;
-end; $;
+end; $$;
 revoke all on function public.erp_sync_overdue_tasks(uuid) from public;
 grant execute on function public.erp_sync_overdue_tasks(uuid) to authenticated;
 
@@ -162,7 +162,7 @@ begin
  if account_part !~ '^[0-9a-f-]{36}$' or length(split_part(p_path,'/',2))<2 then return false; end if;
  return public.erp_is_admin(account_part::uuid);
 exception when invalid_text_representation then return false;
-end; $;
+end; $$;
 revoke all on function public.erp_admin_storage_path(text) from public;
 grant execute on function public.erp_admin_storage_path(text) to authenticated;
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
