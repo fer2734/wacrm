@@ -174,6 +174,22 @@ describe("team onboarding and assigned-agent navigation", () => {
     const res = await middleware(new NextRequest("https://app.test/pipelines"));
     expect(res.headers.get("location")).toBeNull();
   });
+  it("allows sellers to open the ERP sales workspace", async () => {
+    mockUser = { id: "agent" }; mockRole = "agent";
+    const res = await middleware(new NextRequest("https://app.test/erp"));
+    expect(res.headers.get("location")).toBeNull();
+  });
+  it("redirects sellers away from ERP administration", async () => {
+    mockUser = { id: "agent" }; mockRole = "agent";
+    const res = await middleware(new NextRequest("https://app.test/erp/administracion"));
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/erp");
+  });
+  it("allows the owner to access ERP administration", async () => {
+    mockUser = { id: "owner" }; mockRole = "owner";
+    const res = await middleware(new NextRequest("https://app.test/erp/administracion"));
+    expect(res.headers.get("location")).toBeNull();
+  });
   it("keeps personal settings available to agents", async () => {
     mockUser = { id: "agent" }; mockRole = "agent";
     const res = await middleware(new NextRequest("https://app.test/settings?tab=security"));
