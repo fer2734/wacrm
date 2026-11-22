@@ -18,7 +18,6 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
-  FlaskConical,
   Radio,
   Settings,
   Shield,
@@ -97,7 +96,6 @@ const navItems: NavItem[] = [
   { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
-  { href: "/waha-lab", labelKey: "inbox", icon: FlaskConical },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
@@ -218,7 +216,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.filter((item) => accountRole !== "agent" ||
-              ["/inbox", "/waha-lab", "/contacts", "/notifications", "/pipelines", "/agenda", "/erp"].includes(item.href)).map((item) => {
+              ["/inbox", "/contacts", "/notifications", "/pipelines", "/agenda", "/erp"].includes(item.href)).map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && item.href !== "/erp" && item.href !== "/erp/administracion" && pathname.startsWith(item.href));
@@ -246,7 +244,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{item.href === "/waha-lab" ? "WAHA · Pruebas" : item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : item.href === "/erp" ? "Ventas · Clientes" : item.href === "/erp/administracion" ? "ERP · Administración" : item.href === "/erp/administracion/operaciones" ? "ERP · Gestión integral" : t(item.labelKey as string)}</span>
+                    <span className="flex-1">{item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : item.href === "/erp" ? "Ventas · Clientes" : item.href === "/erp/administracion" ? "ERP · Administración" : item.href === "/erp/administracion/operaciones" ? "ERP · Gestión integral" : t(item.labelKey as string)}</span>
                     {item.beta && (
                       <span
                         aria-label={t("beta")}
