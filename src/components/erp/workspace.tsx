@@ -25,7 +25,7 @@ const empty: Collections = { customers: [], sales: [], installments: [], payment
 const money = (n: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(n || 0));
 const number = (n: FormDataEntryValue | null) => Number(String(n || "0").replace(",", ".")) || 0;
 const d = (n: FormDataEntryValue | null) => String(n ?? "").trim();
-const today = () => new Date().toLocaleDateString("en-CA");
+const today = () => { const n=new Date(); return new Date(n.getTime()-n.getTimezoneOffset()*60000).toISOString().slice(0,10); };
 const input = "min-h-10 w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary";
 const label = "block space-y-1 text-xs font-semibold text-muted-foreground";
 const primary = "min-h-10 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50";
@@ -57,6 +57,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
  const [paymentInstallment,setPaymentInstallment] = useState<string | null>(null);
  const admin = role==="propietario" || role==="administracion";
  const selected = data.sales.find(s=>s.id===selectedId) || data.sales[0] || null;
+ useEffect(()=>setPaymentInstallment(null),[selected?.id]);
  const customerName = (id:string) => data.customers.find(c=>c.id===id)?.full_name || "Cliente";
  const agentName = (id:string) => data.people.find(p=>p.user_id===id)?.full_name || "Asesor";
  const errors = (e:unknown) => e instanceof Error ? e.message : String(e);
@@ -102,9 +103,9 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
  async function transact(work:()=>Promise<void>, success:string){
    if(busy||!role||!accountId)return;
    setBusy(true);
-   try {await work(); toast.success(success); await reload(role,accountId)}
+   try {await work(); toast.success(success)}
    catch(e){toast.error(errors(e))}
-   finally{setBusy(false)}
+   finally{try{await reload(role,accountId)}catch(e){toast.error("Error al actualizar: "+errors(e))}setBusy(false)}
  }
  async function addCustomer(e:FormEvent<HTMLFormElement>){
    e.preventDefault(); const f=e.currentTarget; const v=new FormData(f);
@@ -234,19 +235,12 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
  async function saveDelivery(e:FormEvent<HTMLFormElement>){
    e.preventDefault();if(!selected)return;const f=e.currentTarget;const v=new FormData(f);
    await transact(async()=>{
-     const db=createClient();
-     const status=d(v.get("status"));
-     const {error}=await db.from("erp_deliveries").upsert({
-       account_id:accountId,sale_id:selected.id,status,planned_at:d(v.get("planned_at"))||null,
-       delivered_at:d(v.get("delivered_at"))||null,notes:d(v.get("notes"))||null,
-       updated_by:user!.id,updated_at:new Date().toISOString()
-     },{onConflict:"sale_id"});
+     const {error}=await createClient().rpc("erp_save_delivery",{
+       p_sale:selected.id,p_credit:d(v.get("credit_status")),p_status:d(v.get("status")),
+       p_planned:d(v.get("planned_at"))||null,p_delivered:d(v.get("delivered_at"))||null,
+       p_notes:d(v.get("notes"))
+     });
      if(error)throw error;
-     const update:{credit_status:string;stage?:string}={credit_status:d(v.get("credit_status"))};
-     if(status==="entregada")update.stage="entregado";
-     else if(["documentacion","credito","vehiculo","programada"].includes(status))update.stage="entrega_en_gestion";
-     const x=await db.from("erp_sales").update(update).eq("id",selected.id);
-     if(x.error)throw x.error;
    },"Entrega y evaluación actualizadas");
  }
  async function setMember(person:string,chosen:Role){
@@ -278,7 +272,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
      <div><p className="text-[11px] font-bold uppercase tracking-widest text-primary">Valle Automotores · ERP</p>
        <h1 className="text-xl font-bold sm:text-2xl">{administration?"Administración":"Gestión de ventas"}</h1>
        <p className="text-xs text-muted-foreground">{administration?"Caja, cartera, cobranzas y control":"Fichas, operaciones y seguimiento comercial"} · {role}</p></div>
-     <div className="flex gap-2"><Link className={secondary} href={administration?"/erp":"/erp/administracion"}>{administration?"Ver ventas":admin?"Administración":"Mis ventas"}</Link>
+     <div className="flex gap-2">{admin&&<Link className={secondary} href={administration?"/erp":"/erp/administracion"}>{administration?"Ver ventas":"Administración"}</Link>}
        <button className={secondary} onClick={()=>accountId&&role&&void reload(role,accountId).then(()=>toast.success("Datos actualizados")).catch(e=>toast.error(errors(e)))}>↻ Actualizar</button></div>
    </header>
    <div className="flex gap-2 overflow-x-auto pb-1">{nav.map(([key,name])=>
