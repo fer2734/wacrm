@@ -27,6 +27,13 @@ function accountScopedTables(): Set<string> {
       if (match) tables.add(match[1].toLowerCase());
     }
   }
+  // A later migration may retire an entire module. Do not require invitation
+  // guards to query tables that no longer exist in the final database.
+  for (const { sql } of migrations) {
+    for (const removed of sql.matchAll(/\bdrop\s+table(?:\s+if\s+exists)?\s+(?:public\.)?(\w+)/gi)) {
+      tables.delete(removed[1].toLowerCase());
+    }
+  }
   return tables;
 }
 

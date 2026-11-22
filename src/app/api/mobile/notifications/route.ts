@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 type MobileEvent = {
   id: string;
-  kind: "assignment" | "message" | "task";
+  kind: "assignment" | "message";
   title: string;
   body: string;
   href: string;
@@ -84,24 +84,6 @@ export async function GET(request: NextRequest) {
           time: msg.created_at,
         });
       }
-    }
-
-    // Reminders only for assigned salesperson; no other user's tasks appear.
-    const tasks = await db.from("erp_tasks")
-      .select("id,sale_id,title,due_at")
-      .eq("account_id", profile.account_id).eq("assigned_to", user.id)
-      .in("status", ["pendiente", "en_proceso"])
-      .gt("due_at", after).lte("due_at", before)
-      .order("due_at", { ascending: true }).limit(40);
-    if (tasks.error) throw tasks.error;
-    for (const item of tasks.data || []) {
-      events.push({
-        id: "t:" + item.id, kind: "task",
-        title: "Seguimiento pendiente",
-        body: item.title?.slice(0, 120) || "Tenés una gestión programada.",
-        href: "/erp/avanzado",
-        time: item.due_at,
-      });
     }
 
     events.sort((a, b) => a.time.localeCompare(b.time));
