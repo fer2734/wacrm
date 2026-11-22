@@ -281,23 +281,20 @@ export function SalesCenter(){
         <div className="grid gap-2">{sectionItems.slice(1).map(x=><button key={x.id} className="flex items-center justify-between rounded-xl border border-border p-3 text-left text-sm font-bold hover:bg-muted" onClick={()=>setSection(x.id)}><span className="flex items-center gap-2">{x.icon}{x.name}</span><span className="text-primary">Abrir</span></button>)}</div>
        </Panel>
       </div>}
-      {section==="solicitud"&&<Panel title="Solicitud de adhesión" icon={<FileText size={17} className="text-primary"/>} aside={<button className={ghost} onClick={()=>printApplication(application,customer,sale)}>Imprimir solicitud</button>}>
-       <p className="mb-4 text-xs text-muted-foreground">Ficha editable según el formulario de Valle Automotores. Incluye identificación, características del plan, unidad entregada y datos laborales.</p>
-       <form key={sale.id+"-solicitud-"+(data.applications.find(x=>x.sale_id===sale.id)?.updated_at||"new")} onSubmit={saveApplication} className="space-y-5">
-        {sections.map(g=><fieldset key={g.title} className="space-y-3"><legend className="mb-2 border-b border-border pb-2 text-sm font-extrabold">{g.title}</legend>
-         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{g.fields.map(f=>{
-          const defaults:Record<string,string>={full_name:customer.full_name,dni:customer.document_number||"",phone:customer.phone,email:customer.email||"",address:customer.address||"",city:customer.city||"",province:customer.province||"",brand:sale.vehicle_description,salesperson:person(sale.agent_id)};
-          const value=application[f.key]??defaults[f.key]??"";
-          return <label key={f.key} className={label+(f.wide?" sm:col-span-2":"")}>{f.label}
-           {f.options?<select className={input} name={f.key} defaultValue={value}>{f.options.map(o=><option key={o} value={o}>{o||"Seleccionar"}</option>)}</select>
-           :<input className={input} name={f.key} type={f.type||"text"} defaultValue={value} step={f.type==="number"?"any":undefined} required={f.key==="full_name"||f.key==="phone"}/>}
-          </label>})}</div>
-        </fieldset>)}
-        <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs"><p><b>Cuota elegida:</b> {money(sale.installment_amount)} · <b>Gastos administrativos:</b> {money(sale.admin_fee)}</p><p className="mt-1"><b>Cuota 1 total:</b> {money(Number(sale.installment_amount)+Number(sale.admin_fee))} · <b>Cuota 2:</b> {fmtDate(sale.second_due_date||installments[1]?.due_date||null)}</p></div>
-        <Submit busy={busy}>Guardar solicitud de adhesión</Submit>
-       </form>
+      {section==="solicitud"&&<Panel title="Solicitud de adhesión" icon={<FileText size={17} className="text-primary"/>} aside={<button className={ghost} type="button" onClick={()=>printApplication(application,customer,sale)}>Imprimir solicitud</button>}>
+       <p className="mb-4 text-xs text-muted-foreground">La solicitud se guarda junto con la venta. Los datos se muestran para consulta y para emitir el contrato. Administración puede modificar las condiciones antes de registrar la firma.</p>
+       {Object.keys(application).length?sections.map(group=><div key={group.title} className="mb-5">
+        <h3 className="mb-3 border-b border-border pb-2 text-sm font-extrabold">{group.title}</h3>
+        <dl className="grid gap-3 sm:grid-cols-2">{group.fields.map(f=><div key={f.key} className={f.wide?"sm:col-span-2":""}>
+         <dt className="text-xs font-semibold text-muted-foreground">{f.label}</dt><dd className="mt-1 break-words text-sm font-medium">{application[f.key]||"—"}</dd>
+        </div>)}</dl>
+       </div>):<p className="text-xs text-muted-foreground">Este legajo es anterior al nuevo formulario. Completá la solicitud antes de enviar un contrato.</p>}
+       <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs"><b>Cuota 1:</b> {money(Number(sale.installment_amount)+Number(sale.admin_fee))} · <b>Cuota 2:</b> {fmtDate(sale.second_due_date||installments[1]?.due_date||null)}</div>
+       {admin&&<button type="button" className={ghost+" mt-3"} onClick={()=>setEditingSale(true)}>Modificar solicitud y condiciones</button>}
       </Panel>}
-      {section==="contrato"&&<div className="grid gap-4 md:grid-cols-2">
+      {section==="contrato"&&<div className="space-y-4">
+       <ContractManager key={sale.id} saleId={sale.id} accountId={accountId!} userId={user!.id} admin={admin}/>
+       <div className="grid gap-4 md:grid-cols-2">
        <Panel title="Contrato firmado" icon={<FileSignature size={18} className="text-primary"/>}>
         <p className="mb-3 text-xs text-muted-foreground">Adjuntá una copia firmada en PDF o imagen. Los archivos quedan privados en el legajo de esta venta.</p>
         <form onSubmit={addContract} className="space-y-3"><label className={label}>Seleccionar contrato firmado<input key={sale.id+"-contract"} className={input} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" required onChange={e=>setContractFile(e.target.files?.[0]||null)}/></label><Submit busy={busy}>Subir contrato</Submit></form>
@@ -305,6 +302,12 @@ export function SalesCenter(){
        <Panel title="Contratos archivados" icon={<FolderOpen size={18} className="text-primary"/>}>
         {documentsFor("contrato").map(x=><button key={x.id} onClick={()=>void openDocument(x)} className="mb-2 flex w-full items-center gap-2 rounded-xl border border-border p-3 text-left text-xs hover:bg-muted"><FileText size={17}/><span className="min-w-0 flex-1 truncate">{x.file_name}</span><span className="text-primary">Ver</span></button>)}
         {!documentsFor("contrato").length&&<p className="text-xs text-muted-foreground">Todavía no se adjuntó un contrato firmado.</p>}
+       </Panel>
+      </div>
+       <Panel title="DNI del cliente y documentación adjunta" icon={<FolderOpen size={18} className="text-primary"/>}>
+        <p className="mb-3 text-xs text-muted-foreground">El asesor puede adjuntar frente y dorso del DNI como imágenes o PDF. Los archivos se almacenan de manera privada.</p>
+        <form onSubmit={addDni} className="flex flex-wrap items-end gap-3"><label className={label+" flex-1"}>Imagen o PDF del DNI<input className={input} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" required onChange={e=>setDniFile(e.target.files?.[0]||null)}/></label><Submit busy={busy}>Adjuntar DNI</Submit></form>
+        <div className="mt-3 flex flex-wrap gap-2">{documentsFor("dni").map(d=><button type="button" className={ghost} key={d.id} onClick={()=>void openDocument(d)}><FileText size={15}/>{d.file_name}</button>)}</div>
        </Panel>
       </div>}
       {section==="pagos"&&<div className="space-y-4">
