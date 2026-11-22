@@ -137,6 +137,7 @@ begin
  then raise exception 'Contrato ya firmado: no se pueden alterar sus condiciones'; end if;
  if exists(select 1 from public.erp_payments where sale_id=p_sale)
  then raise exception 'La venta tiene pagos registrados: no se pueden alterar cuotas ni importes'; end if;
+ update public.erp_signing_requests set status='revocado' where sale_id=p_sale and status='pendiente';
  if jsonb_typeof(p_application)<>'object' then raise exception 'Solicitud inválida'; end if;
  name:=trim(coalesce(p_application->>'full_name',''));
  phone:=trim(coalesce(p_application->>'phone',''));
@@ -171,7 +172,6 @@ begin
  insert into public.erp_sale_applications(account_id,sale_id,data,updated_by,updated_at)
  values(s.account_id,p_sale,p_application,who,now())
  on conflict (sale_id) do update set data=excluded.data,updated_by=excluded.updated_by,updated_at=now();
- update public.erp_signing_requests set status='revocado' where sale_id=p_sale and status='pendiente';
 end $function$;
 revoke all on function public.erp_admin_update_complete_sale(uuid,jsonb,jsonb) from public,anon;
 grant execute on function public.erp_admin_update_complete_sale(uuid,jsonb,jsonb) to authenticated;
