@@ -33,9 +33,11 @@ function archivedFlag(chat: WaChat): boolean {
     chat._chat?.archived === true || chat._chat?.isArchived === true;
 }
 function normalizeChat(value: unknown): WaChat | null {
+  if (typeof value === "string")
+    return /@(c\.us|g\.us|lid)$/.test(value) ? { id: value } : null;
   if (!value || typeof value !== "object") return null;
   const item = value as Record<string, unknown>;
-  const rawId = item.id;
+  const rawId = item.id || item.chatId;
   const id = typeof rawId === "string" ? rawId :
     rawId && typeof rawId === "object"
       ? (rawId as Record<string, unknown>)._serialized : null;
@@ -57,9 +59,12 @@ function normalizeChat(value: unknown): WaChat | null {
   };
 }
 function normalizedList(value: unknown): WaChat[] {
-  const array = Array.isArray(value) ? value :
-    value && typeof value === "object" && Array.isArray((value as { chats?: unknown }).chats)
-      ? (value as { chats: unknown[] }).chats : [];
+  const record = value && typeof value === "object"
+    ? value as Record<string, unknown> : {};
+  const array: unknown[] = Array.isArray(value) ? value :
+    Array.isArray(record.chats) ? record.chats :
+    Array.isArray(record.data) ? record.data :
+    Array.isArray(record.items) ? record.items : [];
   return array.map(normalizeChat).filter((c): c is WaChat => c !== null);
 }
 function ts(value: number | null | undefined): string {
@@ -338,9 +343,9 @@ export default function WahaLab() {
       const stored = map.get(row.id);
       map.set(row.id, {
         ...stored, ...row,
-        archived: typeof row.archived === "boolean" ? row.archived :
-          typeof row._chat?.archived === "boolean" ? row._chat.archived :
-          stored?.archived
+        archived: typeof stored?.archived === "boolean" ? stored.archived :
+          typeof row.archived === "boolean" ? row.archived :
+          row._chat?.archived
       });
     }
     if (selectedLabelId) {
