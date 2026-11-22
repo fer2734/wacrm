@@ -37,6 +37,15 @@ export function CompleteSaleEditor({accountId,userId,admin,customers,selectedCus
  async function save(e:FormEvent<HTMLFormElement>){
   e.preventDefault();if(busy)return;
   const f=new FormData(e.currentTarget);const app:Record<string,string>={};
+  const dniFile=f.get("dni_file");
+  async function attachDni(saleId:string){
+   if(!(dniFile instanceof File)||dniFile.size===0)return;
+   const body=new FormData();body.set("sale_id",saleId);body.set("kind","dni");body.set("file",dniFile);
+   const res=await fetch("/api/erp/files",{method:"POST",body});
+   const result=await res.json().catch(()=>({error:"No se pudo adjuntar el DNI"}));
+   if(!res.ok||!result.ok)toast.warning("La venta quedó guardada, pero no se adjuntó el DNI: "+(result.error||"Error de subida"));
+   else toast.success("DNI adjuntado al legajo");
+  }
   for(const group of sections)for(const field of group.fields)app[field.key]=text(f.get(field.key));
   const mandatory=[["full_name","nombre del cliente"],["dni","DNI del cliente"],["phone","teléfono del cliente"],["address","domicilio"],["city","localidad"],["brand","marca"],["model","modelo"],["vehicle_category","tipo de vehículo"]];
   for(const [key,title] of mandatory)if(!app[key])return toast.error("Falta completar "+title);
@@ -61,6 +70,7 @@ export function CompleteSaleEditor({accountId,userId,admin,customers,selectedCus
    if(editing){
     const {error}=await db.rpc("erp_admin_update_complete_sale",{p_sale:sale.id,p_values:values,p_application:app});
     if(error)throw error;
+    await attachDni(sale.id);
     toast.success("Venta y solicitud actualizadas");
     await onSaved(sale.id);
    }else{
@@ -68,6 +78,7 @@ export function CompleteSaleEditor({accountId,userId,admin,customers,selectedCus
      p_account:accountId,p_customer:clientId==="new"?null:clientId,p_values:values,p_application:app
     });
     if(error)throw error;
+    await attachDni(String(data));
     toast.success("Venta registrada: solicitud, cuotas y contrato listo para emitir");
     await onSaved(String(data));
    }
@@ -114,6 +125,10 @@ export function CompleteSaleEditor({accountId,userId,admin,customers,selectedCus
      <label className={label+" sm:col-span-2"}>Notas de la operación<textarea className={input} name="notes" rows={2} defaultValue={sale?.notes||""}/></label>
     </div>
    </fieldset>
+   <div className="rounded-xl border border-border bg-muted/20 p-4">
+    <label className={label}>Adjuntar foto o PDF del DNI del cliente (opcional)<input type="file" name="dni_file" accept="image/jpeg,image/png,image/webp,application/pdf" className={input}/></label>
+    <p className="mt-2 text-xs text-muted-foreground">El asesor puede cargar el DNI en este momento o desde el legajo. Tamaño máximo 10 MB; almacenamiento privado.</p>
+   </div>
    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4 text-sm">
     <div><p className="text-xs text-muted-foreground">Primera cuota, con gastos administrativos</p><p className="text-xl font-black">{money(monthly+fee)}</p></div>
     <p className="text-xs text-muted-foreground">Cuota mensual: {money(monthly)} · Gastos: {money(fee)}</p>
