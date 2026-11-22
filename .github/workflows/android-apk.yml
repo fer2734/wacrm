@@ -50,7 +50,8 @@ jobs:
           { yes || true; } | "$SDKMANAGER" --licenses > /dev/null
 
       - name: Instalar plataforma Android 35
-        run: "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
