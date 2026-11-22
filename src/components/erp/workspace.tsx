@@ -18,10 +18,11 @@ type Vehicle = { id: string; brand: string; model: string; version: string | nul
 type Delivery = { id: string; sale_id: string; status: string; planned_at: string | null; delivered_at: string | null; notes: string | null };
 type Member = { user_id: string; erp_role: Role };
 type Person = { user_id: string; full_name: string | null; email: string; account_role: string };
+type Audit = { id: number; entity: string; action: string; actor_id: string | null; created_at: string };
 type CrmContact = { id: string; name: string; phone: string };
 type CrmConversation = { id: string; contact_id: string; assigned_agent_id: string | null };
-type Collections = { customers: Customer[]; sales: Sale[]; installments: Installment[]; payments: Payment[]; documents: Document[]; followups: Followup[]; expenses: Expense[]; inventory: Vehicle[]; deliveries: Delivery[]; members: Member[]; people: Person[]; contacts: CrmContact[]; conversations: CrmConversation[] };
-const empty: Collections = { customers: [], sales: [], installments: [], payments: [], documents: [], followups: [], expenses: [], inventory: [], deliveries: [], members: [], people: [], contacts: [], conversations: [] };
+type Collections = { customers: Customer[]; sales: Sale[]; installments: Installment[]; payments: Payment[]; documents: Document[]; followups: Followup[]; expenses: Expense[]; inventory: Vehicle[]; deliveries: Delivery[]; members: Member[]; people: Person[]; contacts: CrmContact[]; conversations: CrmConversation[]; audit: Audit[] };
+const empty: Collections = { customers: [], sales: [], installments: [], payments: [], documents: [], followups: [], expenses: [], inventory: [], deliveries: [], members: [], people: [], contacts: [], conversations: [], audit: [] };
 const money = (n: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(Number(n || 0));
 const number = (n: FormDataEntryValue | null) => Number(String(n || "0").replace(",", ".")) || 0;
 const d = (n: FormDataEntryValue | null) => String(n ?? "").trim();
@@ -66,7 +67,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
    const authorized = ["propietario","administracion","vendedor"].includes(actualRole);
    if(!authorized) return;
    const db=createClient();
-   const [customers,sales,installments,payments,documents,followups,inventory,expenses,deliveries,members,people,contacts,conversations]=await Promise.all([
+   const [customers,sales,installments,payments,documents,followups,inventory,expenses,deliveries,members,people,contacts,conversations,audit]=await Promise.all([
      fetchRows<Customer>("erp_customers",account),
      fetchRows<Sale>("erp_sales",account),
      fetchRows<Installment>("erp_installments",account),
@@ -79,9 +80,10 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
      db.from("erp_memberships").select("user_id,erp_role").eq("account_id",account).then(r=>{if(r.error)throw r.error;return r.data as Member[]}),
      db.from("profiles").select("user_id,full_name,email,account_role").eq("account_id",account).then(r=>{if(r.error)throw r.error;return r.data as Person[]}),
      db.from("contacts").select("id,name,phone").eq("account_id",account).limit(500).then(r=>r.data as CrmContact[]||[]),
-     db.from("conversations").select("id,contact_id,assigned_agent_id").eq("account_id",account).limit(500).then(r=>r.data as CrmConversation[]||[])
+     db.from("conversations").select("id,contact_id,assigned_agent_id").eq("account_id",account).limit(500).then(r=>r.data as CrmConversation[]||[]),
+     actualRole==="vendedor"?Promise.resolve([]):db.from("erp_audit_log").select("id,entity,action,actor_id,created_at").eq("account_id",account).order("created_at",{ascending:false}).limit(300).then(r=>{if(r.error)throw r.error;return r.data as Audit[]})
    ]);
-   setData({customers,sales,installments,payments,documents,followups,inventory,expenses,deliveries,members,people,contacts,conversations});
+   setData({customers,sales,installments,payments,documents,followups,inventory,expenses,deliveries,members,people,contacts,conversations,audit});
  },[]);
  useEffect(()=>{
    if(!user || !accountId || profileLoading) return;
@@ -260,10 +262,31 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
  const selectedInstallments=useMemo(()=>data.installments.filter(i=>i.sale_id===selected?.id).sort((a,b)=>a.installment_number-b.installment_number),[data.installments,selected?.id]);
  const selectedDocuments=data.documents.filter(x=>x.sale_id===selected?.id);
  const selectedFollowups=data.followups.filter(x=>x.sale_id===selected?.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
+ const dueFollowups=data.followups.filter(x=>x.next_contact_at&&new Date(x.next_contact_at).getTime()<=Date.now()+86400000).sort((a,b)=>String(a.next_contact_at).localeCompare(String(b.next_contact_at))).slice(0,12);
  const filtered=data.sales.filter(s=>(customerName(s.customer_id)+" "+s.vehicle_description).toLowerCase().includes(search.toLowerCase())).sort((a,b)=>b.created_at.localeCompare(a.created_at));
+
+ function exportCsv(kind:"ventas"|"gastos") {
+   if(!admin)return;
+   const csvCell=(value:unknown)=>{
+     let text=String(value??"");
+     if(/^[=+@-]/.test(text)) text="'"+text;
+     return '"'+text.replaceAll('"','""')+'"';
+   };
+   const rows: unknown[][] = kind==="ventas"
+     ? [["Cliente","Asesor","Vehículo","Tipo","Etapa","Crédito","Valor ARS","Cuotas","Importe cuota ARS","Cobrado ARS"],
+       ...data.sales.map(s=>[customerName(s.customer_id),agentName(s.agent_id),s.vehicle_description,s.operation_type,s.stage,s.credit_status,s.price,s.installment_count,s.installment_amount,
+         data.payments.filter(p=>p.sale_id===s.id&&p.status==="confirmado").reduce((sum,p)=>sum+Number(p.amount),0)])]
+     : [["Fecha","Categoría","Descripción","Monto ARS","Medio","Pagado"],
+       ...data.expenses.map(x=>[x.expense_date,x.category,x.description,x.amount,x.method,x.paid?"Sí":"No"])];
+   const csv="\uFEFF"+rows.map(row=>row.map(csvCell).join(";")).join("\r\n");
+   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+   const link=document.createElement("a");
+   link.href=url;link.download="valle-erp-"+kind+"-"+today()+".csv";link.click();
+   window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+ }
  const nav=administration?[
    ["resumen","📊 Reportes"],["cobros","💰 Cobranzas"],["gastos","🧾 Gastos"],
-   ["inventario","🚗 Inventario"],["entregas","🔑 Entregas"],["permisos","🔐 Personal"]
+   ["inventario","🚗 Inventario"],["entregas","🔑 Entregas"],["permisos","🔐 Personal"],["auditoria","🕒 Auditoría"]
  ]:[["operaciones","🚘 Ventas"],["clientes","👤 Fichas"],["cuotas","💳 Cuotas"],["seguimiento","📞 Seguimiento"],["documentos","📎 Archivos"]];
  if(!loaded)return <div className="p-6 text-sm">Preparando el ERP…</div>;
  if(!role||role==="consulta"||(administration&&!admin))return <div className={box}><h1 className="text-lg font-bold">Acceso al ERP</h1><p className="mt-2 text-sm text-muted-foreground">Tu usuario no tiene permiso para este módulo. Solicitá acceso a la persona administradora.</p></div>;
@@ -297,6 +320,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
    {!administration&&tab==="operaciones"&&<div className="grid gap-3 lg:grid-cols-5">
      <div className="space-y-3 lg:col-span-3">
        <Block title="Operaciones"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar cliente o vehículo…" className={input+" mb-3"}/>
+         {dueFollowups.length>0&&<div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2 text-xs"><b>📅 Gestiones para revisar</b>{dueFollowups.slice(0,4).map(x=><button key={x.id} type="button" className="mt-1 block w-full text-left text-primary" onClick={()=>{setSelectedId(x.sale_id);setTab("seguimiento")}}>{customerName(data.sales.find(s=>s.id===x.sale_id)?.customer_id||"")} · {new Date(x.next_contact_at!).toLocaleString("es-AR")}</button>)}</div>}
          <div className="max-h-[65vh] space-y-2 overflow-auto">{filtered.map(s=><button key={s.id} onClick={()=>{setSelectedId(s.id)}} className={"w-full rounded-lg border p-3 text-left "+(selected?.id===s.id?"border-primary bg-primary/5":"border-border")}>
            <div className="flex items-start justify-between gap-2"><div><p className="font-bold">{customerName(s.customer_id)}</p><p className="text-xs">{s.vehicle_description}</p></div><span className="text-[11px] font-bold text-primary">{s.stage.replaceAll("_"," ")}</span></div>
            <div className="mt-1 flex justify-between text-xs text-muted-foreground"><span>{agentName(s.agent_id)}</span><span>{money(s.price)}</span></div>
@@ -384,7 +408,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
    </div>}
    {administration&&admin&&tab==="resumen"&&<>
      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{[["Ventas",data.sales.length.toLocaleString("es-AR")],["Cobrado validado",money(confirmedTotal)],["Por validar",money(pendingTotal)],["Gastos",money(expenseTotal)],["Saldo de cuotas",money(outstanding)],["En mora",money(overdue)],["Clientes",data.customers.length.toLocaleString("es-AR")],["Vehículos",data.inventory.length.toLocaleString("es-AR")]].map(([title,value])=><div className={box} key={title}><p className="text-xs text-muted-foreground">{title}</p><p className="mt-1 text-base font-bold">{value}</p></div>)}</div>
-     <Block title="Rendimiento por asesor"><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-border">{["Asesor","Ventas","Monto pactado","Cobros validados"].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>
+     <Block title="Rendimiento por asesor"><div className="mb-3 flex flex-wrap gap-2"><button className={secondary} onClick={()=>exportCsv("ventas")}>⬇ Exportar ventas CSV</button><button className={secondary} onClick={()=>exportCsv("gastos")}>⬇ Exportar gastos CSV</button></div><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-border">{["Asesor","Ventas","Monto pactado","Cobros validados"].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>
        {data.people.map(person=>{const sales=data.sales.filter(s=>s.agent_id===person.user_id);const salesIds=new Set(sales.map(s=>s.id));const paid=data.payments.filter(p=>salesIds.has(p.sale_id)&&p.status==="confirmado").reduce((a,p)=>a+Number(p.amount),0);if(!sales.length)return null;
        return <tr className="border-b border-border" key={person.user_id}><td className="p-2">{person.full_name||person.email}</td><td className="p-2">{sales.length}</td><td className="p-2">{money(sales.reduce((a,s)=>a+Number(s.price),0))}</td><td className="p-2">{money(paid)}</td></tr>})}</tbody></table></div>
        <p className="mt-3 text-[11px] text-muted-foreground">Resumen de registros del ERP (no reemplaza la contabilidad ni la facturación fiscal). Las cuotas pendientes no implican deuda financiera definitiva.</p>
@@ -425,6 +449,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
      <label className={label+" col-span-2"}>Observaciones<textarea className={input} rows={3} name="notes" key={"notes-"+selected.id} defaultValue={data.deliveries.find(x=>x.sale_id===selected.id)?.notes||""}/></label>
      <div className="col-span-2"><FormAction busy={busy}>Guardar control de entrega</FormAction></div>
    </form>}</Block>}
+   {administration&&admin&&tab==="auditoria"&&<Block title="Bitácora de operaciones"><div className="max-h-[75vh] space-y-2 overflow-auto">{data.audit.map(entry=><div key={entry.id} className="flex flex-wrap justify-between gap-2 rounded-lg border border-border px-3 py-2 text-xs"><div><b>{entry.action} · {entry.entity.replace("erp_","")}</b><p className="text-muted-foreground">{agentName(entry.actor_id||"")}</p></div><span className="text-muted-foreground">{new Date(entry.created_at).toLocaleString("es-AR")}</span></div>)}{!data.audit.length&&<p className="text-sm text-muted-foreground">Todavía no hay movimientos.</p>}</div></Block>}
    {administration&&admin&&tab==="permisos"&&<Block title="Permisos de cada persona">{role!=="propietario"&&<p className="mb-3 text-xs text-muted-foreground">Solo la cuenta propietaria puede modificar permisos.</p>}
      <div className="space-y-2">{data.people.map(person=>{const current=data.members.find(m=>m.user_id===person.user_id)?.erp_role||"consulta";const locked=person.user_id===user?.id&&current==="propietario";
        return <div key={person.user_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3 text-sm">
