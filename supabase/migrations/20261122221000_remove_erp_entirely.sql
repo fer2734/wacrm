@@ -175,9 +175,8 @@ BEGIN
 END
 $drop_erp$;
 
--- Los tres buckets están vacíos y no son necesarios fuera del ERP.
-DELETE FROM storage.buckets
-WHERE id IN ('erp-comprobantes','erp-administracion','erp-firmas')
-  AND NOT EXISTS (SELECT 1 FROM storage.objects WHERE bucket_id=storage.buckets.id);
+-- Los tres buckets del ERP están vacíos. Supabase Storage prohíbe eliminarlos
+-- por SQL (storage.protect_delete); eliminarlos con la API de Storage cuando
+-- esté disponible. Las políticas de lectura/escritura ya se retiraron arriba.
 
 COMMIT;
