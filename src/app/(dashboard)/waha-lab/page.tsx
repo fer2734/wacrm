@@ -442,9 +442,9 @@ export default function WahaLab() {
     if (!user) return;
     let cancelled = false;
     const db = createClient();
-    void db.from("waha_lab_snapshots")
+    void Promise.resolve(db.from("waha_lab_snapshots")
       .select("indexed_chats,previews,checked_times,last_full_scan,contacts,lids,names_checked_at,session_identity")
-      .eq("owner_user_id", user.id).maybeSingle()
+      .eq("owner_user_id", user.id).maybeSingle())
       .then(({ data, error }) => {
         if (cancelled || error || !data) return;
         if (typeof data.session_identity === "string") setCachedIdentity(data.session_identity);
