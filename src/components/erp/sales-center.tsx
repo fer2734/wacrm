@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { sections } from "@/lib/erp/application-fields";
+import { CompleteSaleEditor } from "@/components/erp/complete-sale-editor";
+import { ContractManager } from "@/components/erp/contract-manager";
 
 type Role = "propietario" | "administracion" | "vendedor" | "consulta";
 type Customer = { id:string; agent_id:string; full_name:string; document_number:string|null; phone:string; email:string|null; address:string|null; city:string|null; province:string|null; notes:string|null; crm_contact_id:string|null; created_at:string };
@@ -74,6 +76,8 @@ export function SalesCenter(){
  const [search,setSearch]=useState("");
  const [creatingCustomer,setCreatingCustomer]=useState(false);
  const [newSale,setNewSale]=useState(false);
+ const [editingSale,setEditingSale]=useState(false);
+ const [dniFile,setDniFile]=useState<File|null>(null);
  const [entryDate,setEntryDate]=useState(localDate());
  const [secondDue,setSecondDue]=useState(addMonth(localDate()));
  const [paymentInstallment,setPaymentInstallment]=useState("");
@@ -91,6 +95,7 @@ export function SalesCenter(){
    db.from("profiles").select("user_id,full_name,email").eq("account_id",account).then(r=>{if(r.error)throw r.error;return (r.data??[]) as Person[]})
   ]);
   setData({customers,sales,installments,payments,documents,followups,applications,people});
+  return {customers,sales};
  },[]);
  useEffect(()=>{
   if(!user||!accountId||profileLoading)return;
@@ -111,7 +116,7 @@ export function SalesCenter(){
  const documents=data.documents.filter(x=>x.sale_id===sale?.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
  const followups=data.followups.filter(x=>x.sale_id===sale?.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
  const application=data.applications.find(x=>x.sale_id===sale?.id)?.data||{};
- useEffect(()=>{setContractFile(null);setPaymentFile(null);setProofFile(null);setPaymentInstallment("");setProofPayment("");},[sale?.id]);
+ useEffect(()=>{setContractFile(null);setPaymentFile(null);setProofFile(null);setDniFile(null);setPaymentInstallment("");setProofPayment("");},[sale?.id]);
  const person=(id:string)=>data.people.find(x=>x.user_id===id)?.full_name||"Asesor";
  const paid=(id:string)=>payments.filter(p=>p.installment_id===id&&p.status==="confirmado").reduce((a,p)=>a+Number(p.amount),0);
  const documentsFor=(kind:string)=>documents.filter(x=>x.kind===kind);
@@ -132,46 +137,19 @@ export function SalesCenter(){
    if(error)throw error;setCustomerId(r.id);setSaleId("");setCreatingCustomer(false);setNewSale(true);form.reset();
   },"Cliente incorporado a la cartera");
  }
- async function createSale(e:FormEvent<HTMLFormElement>){
-  e.preventDefault();if(!customer)return;const form=e.currentTarget;const f=new FormData(form);
-  if(secondDue<entryDate){toast.error("La cuota 2 no puede vencer antes del ingreso");return}
-  await transact(async()=>{
-   const {data:id,error}=await createClient().rpc("erp_create_sale",{p_account:accountId,p_customer:customer.id,p_values:{
-    agent_id:customer.agent_id,vehicle_description:val(f.get("vehicle_description")),vehicle_type:val(f.get("vehicle_type")),
-    operation_type:val(f.get("operation_type")),price:num(f.get("price")),initial_amount:0,admin_fee:num(f.get("admin_fee")),
-    installment_amount:num(f.get("installment_amount")),installment_count:num(f.get("installment_count")),
-    first_due:entryDate,entry_date:entryDate,second_due_date:secondDue,
-    delivery_target_installment:4,notes:val(f.get("notes"))
-   }});
-   if(error)throw error;setSaleId(String(id));setSection("solicitud");setNewSale(false);
-  },"Venta y cronograma de cuotas creados");
- }
- async function saveApplication(e:FormEvent<HTMLFormElement>){
-  e.preventDefault();if(!sale||!customer)return;const f=new FormData(e.currentTarget);
-  const fields:Record<string,string>={};for(const g of sections)for(const item of g.fields)fields[item.key]=val(f.get(item.key));
-  if(!fields.full_name||!fields.phone){toast.error("El nombre y el teléfono son obligatorios");return}
-  await transact(async()=>{
-   const db=createClient();
-   const {error:cError}=await db.from("erp_customers").update({
-    full_name:fields.full_name,phone:fields.phone,document_number:fields.dni||null,
-    email:fields.email||null,address:fields.address||null,city:fields.city||null,
-    province:fields.province||null,updated_at:new Date().toISOString()
-   }).eq("id",customer.id);
-   if(cError)throw cError;
-   const {error}=await db.from("erp_sale_applications").upsert({account_id:accountId,sale_id:sale.id,data:fields,updated_by:user!.id,updated_at:new Date().toISOString()},{onConflict:"sale_id"});
-   if(error)throw error;
-  },"Solicitud de adhesión guardada");
- }
  async function upload(file:File,kind:string,paymentId:string|null=null){
-  if(!sale||!accountId||!user)throw new Error("Primero seleccioná una operación");
-  if(!["application/pdf","image/jpeg","image/png","image/webp"].includes(file.type)||file.size<1||file.size>10485760)throw new Error("Admitimos PDF, JPG, PNG o WEBP hasta 10 MB");
-  const safe=file.name.replace(/[^\w.\-]/g,"_").slice(-90);
-  const path=accountId+"/"+sale.id+"/"+crypto.randomUUID()+"-"+safe;
-  const db=createClient();const store=db.storage.from("erp-comprobantes");
-  const {error:uploadError}=await store.upload(path,file,{contentType:file.type,upsert:false});
-  if(uploadError)throw uploadError;
-  const {error}=await db.from("erp_documents").insert({account_id:accountId,sale_id:sale.id,payment_id:paymentId,kind,file_name:file.name,object_path:path,mime_type:file.type,file_size:file.size,created_by:user.id});
-  if(error){await store.remove([path]);throw error}
+  if(!sale)throw new Error("Primero seleccioná una operación");
+  const body=new FormData();
+  body.set("sale_id",sale.id);body.set("kind",kind);body.set("file",file);
+  if(paymentId)body.set("payment_id",paymentId);
+  const response=await fetch("/api/erp/files",{method:"POST",body});
+  const result=await response.json().catch(()=>({error:"No se pudo leer la respuesta del servidor"}));
+  if(!response.ok||!result.ok)throw new Error(result.error||"No se pudo subir el archivo");
+ }
+ async function addDni(e:FormEvent<HTMLFormElement>){
+  e.preventDefault();if(!dniFile)return toast.error("Seleccioná una imagen o PDF del DNI");
+  const form=e.currentTarget;
+  await transact(async()=>{await upload(dniFile,"dni");setDniFile(null);form.reset()},"DNI adjuntado al legajo");
  }
  async function addContract(e:FormEvent<HTMLFormElement>){
   e.preventDefault();if(!contractFile)return toast.error("Seleccioná un contrato firmado");
@@ -212,9 +190,6 @@ export function SalesCenter(){
     outcome:val(f.get("outcome")),notes:val(f.get("notes")),next_contact_at:val(f.get("next_contact_at"))?new Date(val(f.get("next_contact_at"))).toISOString():null});
    if(error)throw error;form.reset();
   },"Seguimiento registrado");
- }
- async function changeStage(stage:string){
-  if(!sale)return;await transact(async()=>{const {error}=await createClient().rpc("erp_change_stage",{p_sale:sale.id,p_stage:stage});if(error)throw error},"Estado de venta actualizado");
  }
  async function openDocument(doc:Document){
   const popup=window.open("","_blank");
