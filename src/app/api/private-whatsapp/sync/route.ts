@@ -72,6 +72,10 @@ export async function POST() {
         offset = newOffset;
         continue;
       }
+      const enrich = await db.rpc("apply_private_whatsapp_profiles", {
+        p_owner: user.id, p_events: batch.events
+      });
+      if (enrich.error) console.warn("[private-whatsapp/sync] profile enrichment:", enrich.error.message);
       imported += Number(data?.imported || 0);
       processed += Number(data?.processed || 0);
       batches++;
