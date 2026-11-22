@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive, ArchiveRestore, ArrowLeft, Check, ChevronDown, Copy, Edit3, GitBranch, LoaderCircle,
   LockKeyhole, MessageCircle, RefreshCw, Search, Send, Settings2, Smartphone,
@@ -29,8 +29,9 @@ type Inbox = { id: string; display_name: string };
 // WAHA WEBJS exposes archived state on full chats; overview may include
 // it inside _chat. Preserve only explicit boolean values.
 function archivedFlag(chat: WaChat): boolean {
-  return chat.archived === true || chat.isArchived === true ||
-    chat._chat?.archived === true || chat._chat?.isArchived === true;
+  if (typeof chat.archived === "boolean") return chat.archived;
+  if (typeof chat.isArchived === "boolean") return chat.isArchived;
+  return chat._chat?.archived === true || chat._chat?.isArchived === true;
 }
 function normalizeChat(value: unknown): WaChat | null {
   if (typeof value === "string")
@@ -108,6 +109,9 @@ export default function WahaLab() {
   const [showSettings, setShowSettings] = useState(false);
   const [chats, setChats] = useState<WaChat[]>([]);
   const [indexedChats, setIndexedChats] = useState<WaChat[]>([]);
+  const indexInFlight = useRef(false);
+  const [indexedCount, setIndexedCount] = useState(0);
+  const [indexError, setIndexError] = useState("");
   const [lists, setLists] = useState<WaLabel[]>([]);
   const [labelChats, setLabelChats] = useState<Record<string, WaChat[]>>({});
   const [view, setView] = useState("all");
@@ -152,30 +156,46 @@ export default function WahaLab() {
   const loadChats = useCallback(async () => {
     if (!user || !connected) return;
     try {
-      const result = await json("/api/waha-lab?action=chats&limit=" + limit + "&offset=0");
+      const result = await json("/api/waha-lab?action=chats&limit=200&offset=0");
       const items: WaChat[] = normalizedList(result);
       setChats(items);
       setActive(prev => prev ? items.find(x => x.id === prev.id) || prev : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron consultar los chats");
     }
-  }, [user, connected, limit]);
+  }, [user, connected]);
+  // Fetch every page of the *overview* endpoint. The previous full-chat
+  // endpoint failed, leaving only the first 80 results (29 active + 51 archived).
+  // Progressive updates keep the UI responsive while recovering older chats.
   const loadIndex = useCallback(async () => {
-    if (!user || !connected) return;
+    if (!user || !connected || indexInFlight.current) return;
+    indexInFlight.current = true;
     setListsLoading(true);
+    setIndexError("");
+    const collected = new Map<string, WaChat>();
     try {
-      const collected = new Map<string, WaChat>();
-      for (let offset = 0; offset < 4000; offset += 200) {
-        const result = await json("/api/waha-lab?action=chat-index&limit=200&offset=" + offset);
+      for (let offset = 0; offset < 10000; offset += 200) {
+        const result = await json("/api/waha-lab?action=chats&limit=200&offset=" + offset);
         const page = normalizedList(result);
+        const rawRows: unknown[] = Array.isArray(result) ? result :
+          result && Array.isArray(result.chats) ? result.chats :
+          result && Array.isArray(result.data) ? result.data : [];
+        const previousSize = collected.size;
         for (const chat of page) collected.set(chat.id, chat);
-        if (page.length < 200) break;
+        setIndexedChats([...collected.values()]);
+        setIndexedCount(collected.size);
+        if (rawRows.length < 200) break;
+        if (offset > 0 && collected.size === previousSize) {
+          setIndexError("WAHA repitió la misma página. Podés reintentar la sincronización.");
+          break;
+        }
       }
-      setIndexedChats([...collected.values()]);
-      setListsError("");
     } catch (err) {
-      setListsError(err instanceof Error ? err.message : "No se pudo sincronizar Archivados");
-    } finally { setListsLoading(false); }
+      setIndexError(err instanceof Error ? err.message : "No se pudieron recuperar los chats anteriores");
+    } finally {
+      indexInFlight.current = false;
+      setListsLoading(false);
+    }
   }, [user, connected]);
 
   const loadLists = useCallback(async () => {
@@ -185,6 +205,7 @@ export default function WahaLab() {
       const raw: unknown[] = Array.isArray(result) ? result : [];
       setLists(raw.filter((v): v is WaLabel => !!v && typeof v === "object" &&
         typeof (v as WaLabel).id === "string" && typeof (v as WaLabel).name === "string"));
+      setListsError("");
     } catch (err) {
       setListsError(err instanceof Error ? err.message : "No se pudieron sincronizar las listas");
     }
@@ -702,13 +723,20 @@ export default function WahaLab() {
             </div>
             {listsLoading && (
               <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <LoaderCircle className="size-3 animate-spin"/> Sincronizando listas y archivados...
+                <LoaderCircle className="size-3 animate-spin"/>
+                Cargando conversaciones: {indexedCount.toLocaleString("es-AR")} recuperadas...
               </p>
             )}
-            {!!listsError && (
-              <button type="button" onClick={() => {void loadIndex();void loadLists();}}
+            {!!indexError && (
+              <button type="button" onClick={() => void loadIndex()}
                 className="flex items-center gap-1 text-left text-[11px] text-amber-600 dark:text-amber-400">
-                <RefreshCw className="size-3"/> No se pudieron actualizar todas las listas. Reintentar.
+                <RefreshCw className="size-3"/> Chats: {indexError} · Reintentar
+              </button>
+            )}
+            {!!listsError && (
+              <button type="button" onClick={() => void loadLists()}
+                className="flex items-center gap-1 text-left text-[11px] text-amber-600 dark:text-amber-400">
+                <RefreshCw className="size-3"/> Listas: {listsError} · Reintentar
               </button>
             )}
           </div>
