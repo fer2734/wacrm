@@ -1,0 +1,8 @@
+<resources>
+    <style name="ValleTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#EAB308</item>
+        <item name="android:statusBarColor">#202A35</item>
+        <item name="android:navigationBarColor">#202A35</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
