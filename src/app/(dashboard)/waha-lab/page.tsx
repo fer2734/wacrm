@@ -210,6 +210,8 @@ export default function WahaLab() {
   const [snapshotLoaded, setSnapshotLoaded] = useState(false);
   const [namesLastCheckedAt, setNamesLastCheckedAt] = useState<string | null>(null);
   const snapshotSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSnapshot = useRef<Record<string, unknown> | null>(null);
+  const [cachedIdentity, setCachedIdentity] = useState<string | null>(null);
   const indexInFlight = useRef(false);
   const [indexedCount, setIndexedCount] = useState(0);
   const [indexComplete, setIndexComplete] = useState(false);
@@ -428,6 +430,7 @@ export default function WahaLab() {
       .eq("owner_user_id", user.id).maybeSingle()
       .then(({ data, error }) => {
         if (cancelled || error || !data) return;
+        if (typeof data.session_identity === "string") setCachedIdentity(data.session_identity);
         const restoredChats = normalizedList(data.indexed_chats);
         if (restoredChats.length) {
           setIndexedChats(restoredChats);
@@ -459,33 +462,55 @@ export default function WahaLab() {
     return () => { cancelled = true; };
   }, [user?.id]);
 
-  // Store only per-agent chat metadata and text previews in Supabase under
-  // owner-only RLS; NEVER store media bytes or access tokens here.
-  // A throttled save avoids one database request per incoming message.
+  // Only the current WAHA account may see a prior snapshot. If this agent
+  // linked a different WhatsApp number, discard the old private index.
   useEffect(() => {
-    if (!snapshotReady || !user || !connected || !indexedChats.length ||
-        snapshotSaveTimer.current) return;
+    if (!snapshotReady || !connected || !cachedIdentity || !status.me?.id ||
+        cachedIdentity === status.me.id) return;
+    setCachedIdentity(status.me.id);
+    setIndexedChats([]);
+    setLatestByChat({});
+    setContacts([]);
+    setLids([]);
+    setSnapshotLoaded(false);
+    setLastIndexAt(null);
+    setNamesLastCheckedAt(null);
+    setIndexComplete(false);
+    setVerifiedTotal(0);
+    latestCheckedAt.current.clear();
+    latestQueue.current = [];
+    latestPending.current.clear();
+  }, [snapshotReady, connected, status.me?.id, cachedIdentity]);
+
+  // Use the MOST RECENT state when the throttle fires, not an outdated
+  // closure captured before the 555-chat scan completed.
+  useEffect(() => {
+    if (!snapshotReady || !user || !connected || !indexedChats.length) return;
+    pendingSnapshot.current = {
+      owner_user_id: user.id,
+      session_identity: status.me?.id || cachedIdentity || null,
+      indexed_chats: indexedChats.slice(0, 5000),
+      previews: latestByChat,
+      checked_times: Object.fromEntries([...latestCheckedAt.current.entries()].slice(0, 5000)),
+      last_full_scan: lastIndexAt,
+      contacts: contacts.slice(0, 5000),
+      lids: lids.slice(0, 5000),
+      names_checked_at: namesLastCheckedAt,
+      updated_at: new Date().toISOString()
+    };
+    if (snapshotSaveTimer.current) return;
     snapshotSaveTimer.current = setTimeout(() => {
       snapshotSaveTimer.current = null;
-      const checks = Object.fromEntries([...latestCheckedAt.current.entries()].slice(0, 5000));
-      void createClient().from("waha_lab_snapshots").upsert({
-        owner_user_id: user.id,
-        session_identity: status.me?.id || null,
-        indexed_chats: indexedChats.slice(0, 5000),
-        previews: latestByChat,
-        checked_times: checks,
-        last_full_scan: lastIndexAt,
-        contacts: contacts.slice(0, 5000),
-        lids: lids.slice(0, 5000),
-        names_checked_at: namesLastCheckedAt,
-        updated_at: new Date().toISOString()
-      }, { onConflict: "owner_user_id" })
-      .then(({ error }) => {
+      const payload = pendingSnapshot.current;
+      if (!payload) return;
+      void createClient().from("waha_lab_snapshots").upsert(
+        payload, { onConflict: "owner_user_id" }
+      ).then(({ error }) => {
         if (error) console.warn("Private WAHA snapshot could not be saved:", error.message);
       });
     }, 7000);
   }, [snapshotReady, connected, user?.id, indexedChats, latestByChat,
-    lastIndexAt, namesLastCheckedAt, contacts, lids, status.me?.id]);
+    lastIndexAt, namesLastCheckedAt, contacts, lids, status.me?.id, cachedIdentity]);
 
   useEffect(() => { if (user) void getStatus(); }, [user, getStatus]);
   useEffect(() => {
