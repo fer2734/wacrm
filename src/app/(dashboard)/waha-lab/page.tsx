@@ -1,0 +1,516 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft, Check, ChevronDown, Copy, Edit3, GitBranch, LoaderCircle,
+  LockKeyhole, MessageCircle, RefreshCw, Search, Send, Settings2, Smartphone,
+  Unplug, Wifi, WifiOff, X
+} from "lucide-react";
+import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
+
+type WaStatus = { status?: string; engine?: { engine?: string } | string; me?: { id?: string };
+  error?: string; message?: string };
+type WaMessage = { id: string; timestamp: number; fromMe?: boolean;
+  body?: string; type?: string; hasMedia?: boolean };
+type WaChat = { id: string; name?: string; picture?: string | null;
+  lastMessage?: WaMessage | null; unreadCount?: number; _chat?: { unreadCount?: number } };
+type WaContact = { id: string; number?: string; name?: string; pushname?: string;
+  shortName?: string; isMyContact?: boolean };
+type WaLid = { lid: string; pn: string | null };
+type Stage = { id: string; name: string; color: string; position: number };
+type Setting = { chat_id: string; alias: string | null; stage_id: string | null };
+type Inbox = { id: string; display_name: string };
+
+function ts(value: number | null | undefined): string {
+  if (!value || !Number.isFinite(value)) return "Sin mensajes";
+  const n = value > 100000000000 ? value : value * 1000;
+  return new Date(n).toLocaleString("es-AR", {
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
+  });
+}
+function jidPhone(jid: string | undefined): string {
+  if (!jid?.endsWith("@c.us")) return "";
+  return "+" + jid.split("@")[0];
+}
+function initials(name: string): string {
+  return name.trim().split(/\s+/).slice(0, 2).map(s => s.slice(0, 1).toUpperCase()).join("") || "?";
+}
+async function json(url: string, options?: RequestInit) {
+  const response = await fetch(url, { cache: "no-store", ...options });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || ("Error HTTP " + response.status));
+  return data;
+}
+async function action(name: string, data?: Record<string, unknown>) {
+  return json("/api/waha-lab", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: name, ...(data || {}) })
+  });
+}
+export default function WahaLab() {
+  const { user, accountId, loading, accountStatus } = useAuth();
+  const [status, setStatus] = useState<WaStatus>({ status: "NOT_CREATED" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [qrEpoch, setQrEpoch] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [chats, setChats] = useState<WaChat[]>([]);
+  const [contacts, setContacts] = useState<WaContact[]>([]);
+  const [lids, setLids] = useState<WaLid[]>([]);
+  const [limit, setLimit] = useState(80);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState<WaChat | null>(null);
+  const [messages, setMessages] = useState<WaMessage[]>([]);
+  const [messageLimit, setMessageLimit] = useState(80);
+  const [draft, setDraft] = useState("");
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [settings, setSettings] = useState<Record<string, Setting>>({});
+  const [inbox, setInbox] = useState<Inbox | null>(null);
+  const [rename, setRename] = useState(false);
+  const [nameDraft, setNameDraft] = useState("WAHA · Pruebas");
+  const [aliasEdit, setAliasEdit] = useState(false);
+  const [aliasDraft, setAliasDraft] = useState("");
+  const [namesLoading, setNamesLoading] = useState(false);
+  const connected = status.status === "WORKING";
+
+  const getStatus = useCallback(async () => {
+    if (!user) return;
+    try {
+      const incoming = await json("/api/waha-lab?action=status");
+      setStatus(incoming);
+      setError("");
+      if (incoming.status === "SCAN_QR") setQrEpoch(Math.floor(Date.now() / 15000));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "WAHA no responde");
+    }
+  }, [user]);
+  const loadChats = useCallback(async () => {
+    if (!user || !connected) return;
+    try {
+      const result = await json("/api/waha-lab?action=chats&limit=" + limit + "&offset=0");
+      const items: WaChat[] = Array.isArray(result) ? result : result.chats || result.data || [];
+      setChats(items);
+      setActive(prev => prev ? items.find(x => x.id === prev.id) || prev : null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudieron consultar los chats");
+    }
+  }, [user, connected, limit]);
+  const loadMessages = useCallback(async () => {
+    if (!active || !connected) return;
+    try {
+      const result = await json("/api/waha-lab?action=messages&chatId=" +
+        encodeURIComponent(active.id) + "&limit=" + messageLimit);
+      const rows: WaMessage[] = Array.isArray(result) ? result : result.messages || [];
+      setMessages(rows.slice().sort((a,b) => (a.timestamp || 0)-(b.timestamp || 0)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudieron cargar los mensajes");
+    }
+  }, [active?.id, connected, messageLimit]);
+
+  const loadNames = useCallback(async () => {
+    if (!user || !connected) return;
+    setNamesLoading(true);
+    try {
+      const allContacts: WaContact[] = [];
+      const allLids: WaLid[] = [];
+      for (let offset = 0; offset < 2000; offset += 400) {
+        const page = await json("/api/waha-lab?action=contacts&limit=400&offset=" + offset);
+        const batch = Array.isArray(page) ? page as WaContact[] : [];
+        allContacts.push(...batch);
+        if (batch.length < 400) break;
+      }
+      for (let offset = 0; offset < 2000; offset += 400) {
+        try {
+          const page = await json("/api/waha-lab?action=lids&limit=400&offset=" + offset);
+          const batch = Array.isArray(page) ? page as WaLid[] : [];
+          allLids.push(...batch);
+          if (batch.length < 400) break;
+        } catch { break; }
+      }
+      setContacts(allContacts);
+      setLids(allLids);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudieron cargar los contactos WAHA");
+    } finally { setNamesLoading(false); }
+  }, [user, connected]);
+
+  useEffect(() => { if (user) void getStatus(); }, [user, getStatus]);
+  useEffect(() => {
+    if (!user) return;
+    const handle = window.setInterval(() => void getStatus(), 6500);
+    return () => window.clearInterval(handle);
+  }, [user, getStatus]);
+  useEffect(() => {
+    if (!connected) return;
+    void loadChats();
+    const handle = window.setInterval(() => void loadChats(), 8000);
+    return () => window.clearInterval(handle);
+  }, [connected, loadChats]);
+  useEffect(() => {
+    if (!connected || !active) return;
+    void loadMessages();
+    const handle = window.setInterval(() => void loadMessages(), 4500);
+    return () => window.clearInterval(handle);
+  }, [connected, loadMessages, active?.id]);
+  useEffect(() => { if (connected) void loadNames(); }, [connected, loadNames]);
+  useEffect(() => {
+    if (!user) return;
+    const db = createClient();
+    void db.from("waha_lab_inboxes").select("id,display_name")
+      .eq("owner_user_id", user.id).maybeSingle()
+      .then(({ data }) => {
+        setInbox(data as Inbox | null);
+        if (data) setNameDraft(data.display_name);
+      });
+    void db.from("waha_lab_chat_settings")
+      .select("chat_id,alias,stage_id").eq("owner_user_id", user.id)
+      .limit(5000).then(({ data }) => {
+        const map: Record<string, Setting> = {};
+        for (const item of data || []) map[item.chat_id] = item as Setting;
+        setSettings(map);
+      });
+  }, [user]);
+  useEffect(() => {
+    if (!accountId) return;
+    const db = createClient();
+    void db.from("pipelines").select("id").eq("account_id", accountId)
+      .then(async ({ data }) => {
+        const ids = (data || []).map(p => p.id);
+        if (!ids.length) return;
+        const response = await db.from("pipeline_stages").select("id,name,color,position")
+          .in("pipeline_id", ids).order("position");
+        if (!response.error) setStages(response.data as Stage[] || []);
+      });
+  }, [accountId]);
+
+  const byId = useMemo(() => {
+    const map = new Map<string, WaContact>();
+    for (const c of contacts) map.set(c.id, c);
+    return map;
+  }, [contacts]);
+  const pnByLid = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of lids) if (m.pn) map.set(m.lid, m.pn);
+    return map;
+  }, [lids]);
+  const contactOf = (chat: WaChat) =>
+    byId.get(chat.id) || byId.get(pnByLid.get(chat.id) || "") || null;
+  const phoneOf = (chat: WaChat): string => {
+    const c = contactOf(chat);
+    if (c?.number && /^[0-9]{7,20}$/.test(c.number)) return "+" + c.number;
+    return jidPhone(pnByLid.get(chat.id) || chat.id);
+  };
+  const displayName = (chat: WaChat): string => {
+    const c = contactOf(chat);
+    const saved = settings[chat.id]?.alias?.trim();
+    return saved || (c?.isMyContact ? c.name : "") ||
+      (c?.name && !/^\d+$/.test(c.name) ? c.name : "") ||
+      (chat.name && !/^\d+$/.test(chat.name) ? chat.name : "") ||
+      c?.pushname || phoneOf(chat) || "Contacto sin nombre";
+  };
+  const stageOf = (chat: WaChat): Stage | undefined =>
+    stages.find(s => s.id === settings[chat.id]?.stage_id) ||
+    stages.find(s => s.name.toLocaleLowerCase("es-AR") === "nuevo contacto");
+  const filtered = useMemo(() => {
+    const term = query.trim().toLocaleLowerCase("es-AR");
+    if (!term) return chats;
+    return chats.filter(c => (displayName(c) + " " + phoneOf(c) + " " +
+      c.id).toLocaleLowerCase("es-AR").includes(term));
+  }, [chats, query, contacts, lids, settings]);
+
+  async function command(op: "connect"|"restart"|"stop"|"logout") {
+    if (busy) return;
+    if (op === "logout" && !window.confirm(
+      "¿Desvincular este WhatsApp de WAHA? No se borran los chats de la app del celular."
+    )) return;
+    setBusy(true);
+    try {
+      const result = await action(op);
+      setStatus(result);
+      setError("");
+      setQrEpoch(Date.now());
+      if (op === "connect" || op === "restart") setShowSettings(true);
+      if (op === "connect" && user) {
+        const { data } = await createClient().from("waha_lab_inboxes")
+          .select("id,display_name").eq("owner_user_id", user.id).maybeSingle();
+        if (data) setInbox(data);
+      }
+      await getStatus();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "WAHA no responde"); }
+    finally { setBusy(false); }
+  }
+  async function saveSetting(chatId: string, updates: Partial<Setting>) {
+    if (!user) return;
+    const previous = settings[chatId] || { chat_id: chatId, alias: null, stage_id: null };
+    const merged: Setting = { ...previous, ...updates };
+    const { error } = await createClient().from("waha_lab_chat_settings")
+      .upsert({ owner_user_id: user.id, ...merged }, { onConflict: "owner_user_id,chat_id" });
+    if (error) { toast.error("No se pudo guardar la etiqueta o el nombre"); return; }
+    setSettings(current => ({...current, [chatId]: merged}));
+    setAliasEdit(false);
+  }
+  async function saveName() {
+    if (!inbox || !nameDraft.trim()) return;
+    const name = nameDraft.trim().slice(0,60);
+    const { error } = await createClient().from("waha_lab_inboxes")
+      .update({ display_name: name }).eq("id", inbox.id);
+    if (error) { toast.error("No se pudo renombrar la bandeja"); return; }
+    setInbox({ ...inbox, display_name: name }); setRename(false);
+  }
+  async function sendMessage() {
+    if (!active || !connected || busy || !draft.trim()) return;
+    setBusy(true);
+    try {
+      await action("send", { chatId: active.id, text: draft.trim() });
+      setDraft("");
+      await loadMessages();
+      await loadChats();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "No se envió el mensaje"); }
+    finally { setBusy(false); }
+  }
+  const isMobileChat = !!active;
+  if (loading || accountStatus === "loading")
+    return <div className="p-4 text-sm text-muted-foreground">Abriendo prueba WAHA...</div>;
+  if (!user) return <div className="p-4 text-sm">Iniciá sesión para continuar.</div>;
+
+  return (
+    <div className="-m-4 flex h-[calc(100dvh-3.5rem)] min-h-[320px] flex-col overflow-hidden bg-background sm:-m-6">
+      <div className={(isMobileChat ? "hidden sm:flex " : "flex ") +
+        "shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5"}>
+        <div className="flex min-w-0 items-center gap-2">
+          <MessageCircle className="size-5 shrink-0 text-primary"/>
+          <div className="min-w-0">
+            {rename ? <div className="flex items-center gap-1">
+              <input value={nameDraft} maxLength={60} onChange={e=>setNameDraft(e.target.value)}
+                className="h-8 min-w-0 rounded-lg border border-border bg-background px-2 text-sm"/>
+              <button type="button" aria-label="Guardar nombre" onClick={()=>void saveName()}
+                className="rounded-lg bg-primary p-2 text-primary-foreground"><Check className="size-4"/></button>
+            </div> : <button type="button" onClick={()=>setRename(true)} disabled={!inbox}
+              className="flex items-center gap-1 text-sm font-semibold">
+              <span className="truncate">{inbox?.display_name || "WAHA · Pruebas"}</span>
+              {inbox && <Edit3 className="size-3.5 text-muted-foreground"/>}
+            </button>}
+            <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              {connected ? <Wifi className="size-3 text-emerald-500"/> :
+                <WifiOff className="size-3"/>}
+              {connected ? "Conectado" : (status.status || "Sin conexión")} · WEBJS ·
+              <LockKeyhole className="size-3"/> Solo yo
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button type="button" title="Actualizar" onClick={()=>{void getStatus();void loadChats();void loadMessages();}}
+            className="grid size-9 place-items-center rounded-lg border border-border text-muted-foreground">
+            <RefreshCw className="size-4"/></button>
+          <button type="button" title="Administrar conexión WAHA"
+            onClick={()=>setShowSettings(x=>!x)}
+            className="grid size-9 place-items-center rounded-lg border border-border text-muted-foreground">
+            <Settings2 className="size-4"/></button>
+        </div>
+      </div>
+      {(showSettings || !connected) && !isMobileChat && (
+        <div className="shrink-0 border-b border-border bg-card px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-foreground">Conexión WAHA · Laboratorio</p>
+            {connected && <button type="button" onClick={()=>setShowSettings(false)}
+              aria-label="Cerrar panel"><X className="size-4"/></button>}
+          </div>
+          {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+          {status.status === "SCAN_QR" && (
+            <div className="my-2 flex flex-col items-center gap-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img key={qrEpoch} src={"/api/waha-lab/qr?v=" + qrEpoch}
+                alt="Escaneá este QR con los Dispositivos vinculados de WhatsApp"
+                className="size-44 rounded-lg border border-border bg-white p-2"/>
+              <span className="text-[11px] text-muted-foreground">
+                WhatsApp → Dispositivos vinculados → Vincular dispositivo
+              </span>
+            </div>
+          )}
+          <p className="mt-1 text-xs text-muted-foreground">
+            {connected ? "Sesión vinculada. Los mensajes se consultan directamente a WAHA." :
+              status.status === "SCAN_QR" ? "Escaneá el QR para conectar." :
+              status.status === "STARTING" ? "WAHA está iniciando el navegador..." :
+              "Esta prueba no usa Baileys ni importa sus conversaciones anteriores."}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {!connected && <button type="button" disabled={busy}
+              onClick={()=>void command("connect")}
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+              <Smartphone className="size-4"/> Vincular WAHA
+            </button>}
+            {status.status !== "NOT_CREATED" && <button type="button" disabled={busy}
+              onClick={()=>void command("restart")}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs disabled:opacity-50">
+              <RefreshCw className="size-3.5"/> Reiniciar
+            </button>}
+            {connected && <button type="button" disabled={busy} onClick={()=>void loadNames()}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs disabled:opacity-50">
+              {namesLoading ? <LoaderCircle className="size-3.5 animate-spin"/> :
+                <RefreshCw className="size-3.5"/>} Actualizar contactos
+            </button>}
+            {status.status !== "NOT_CREATED" && <button type="button" disabled={busy}
+              onClick={()=>void command("logout")}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs disabled:opacity-50">
+              <Unplug className="size-3.5"/> Desvincular
+            </button>}
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            WAHA utiliza WhatsApp Web de forma no oficial. Los nombres y teléfonos dependen de los
+            datos que WhatsApp sincronice y los IDs privados pueden no tener teléfono disponible.
+          </p>
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1">
+        <aside className={(isMobileChat ? "hidden sm:flex " : "flex ") +
+          "min-h-0 w-full shrink-0 flex-col border-r border-border bg-card sm:w-[325px] lg:w-[360px]"}>
+          <div className="shrink-0 space-y-2 border-b border-border p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold">Conversaciones WAHA</span>
+              <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{chats.length}{chats.length >= limit ? "+" : ""}</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-2">
+              <Search className="size-4 text-muted-foreground"/>
+              <input value={query} onChange={e=>setQuery(e.target.value)}
+                placeholder="Buscar contactos" type="search"
+                className="h-9 min-w-0 flex-1 bg-transparent text-xs outline-none"/>
+            </div>
+          </div>
+          <div className="private-wa-scroll min-h-0 flex-1 overflow-y-auto">
+            {filtered.map(chat => {
+              const title = displayName(chat);
+              const phone = phoneOf(chat);
+              const stage = stageOf(chat);
+              return <button type="button" key={chat.id}
+                onClick={()=>{setActive(chat);setMessages([]);setMessageLimit(80);setAliasEdit(false);}}
+                className={"block w-full border-b border-border/60 px-3 py-3 text-left hover:bg-muted/50 " +
+                  (active?.id===chat.id ? "bg-primary/10":"")}>
+                <div className="flex items-start gap-2.5">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">{initials(title)}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-[13px] font-semibold">{title}</p>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        {ts(chat.lastMessage?.timestamp)}
+                      </span>
+                    </div>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {phone || "Teléfono no informado"}
+                    </p>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        {chat.lastMessage?.body || "Sin vista previa"}
+                      </span>
+                      {stage && <span className="max-w-28 shrink-0 truncate rounded-md border border-border px-1.5 py-0.5 text-[10px] font-semibold"
+                        style={{ borderColor: (stage.color||"#64748b")+"66",
+                          backgroundColor:(stage.color||"#64748b")+"18" }}>
+                        {stage.name}
+                      </span>}
+                    </div>
+                  </div>
+                </div>
+              </button>;
+            })}
+            {connected && chats.length >= limit &&
+              <button type="button" onClick={()=>setLimit(x=>x+80)}
+                className="flex w-full items-center justify-center gap-1 p-3 text-xs font-semibold text-primary">
+                <ChevronDown className="size-4"/> Cargar más conversaciones
+              </button>}
+            {!chats.length && <p className="p-5 text-center text-xs text-muted-foreground">
+              {connected ? "WhatsApp está sincronizando chats o todavía no hay conversaciones." :
+                "Conectá WAHA para comparar los nombres y teléfonos."}
+            </p>}
+          </div>
+        </aside>
+        <section className={(isMobileChat ? "flex " : "hidden sm:flex ") +
+          "min-h-0 min-w-0 flex-1 flex-col bg-background"}>
+          {!active ? <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <MessageCircle className="size-9 opacity-40"/> Seleccioná un chat de WAHA
+          </div> : <>
+            <div className="shrink-0 border-b border-border bg-card px-3 py-2">
+              <div className="flex items-center gap-2">
+                <button type="button" title="Volver" aria-label="Volver"
+                  onClick={()=>setActive(null)} className="grid size-9 place-items-center sm:hidden">
+                  <ArrowLeft className="size-5"/>
+                </button>
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                  {initials(displayName(active))}
+                </span>
+                <div className="min-w-0 flex-1">
+                  {aliasEdit ? <div className="flex items-center gap-1">
+                    <input value={aliasDraft} onChange={e=>setAliasDraft(e.target.value)}
+                      maxLength={120} className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-sm"/>
+                    <button type="button" title="Guardar nombre" onClick={()=>void saveSetting(active.id,{alias:aliasDraft.trim()||null})}
+                      className="rounded-lg bg-primary p-2 text-primary-foreground"><Check className="size-3.5"/></button>
+                  </div> : <button type="button" title="Cambiar nombre local"
+                    onClick={()=>{setAliasEdit(true);setAliasDraft(settings[active.id]?.alias||"");}}
+                    className="flex max-w-full items-center gap-1 text-left text-sm font-semibold">
+                    <span className="truncate">{displayName(active)}</span>
+                    <Edit3 className="size-3.5 shrink-0 text-muted-foreground"/>
+                  </button>}
+                  <p className="truncate text-[11px] text-muted-foreground">
+                    {phoneOf(active) || "WAHA no proporciona el teléfono para este ID"}
+                  </p>
+                </div>
+                {phoneOf(active) && <button type="button" title="Copiar teléfono"
+                  onClick={()=>void navigator.clipboard.writeText(phoneOf(active)).then(()=>toast.success("Número copiado"))}
+                  className="grid size-9 place-items-center rounded-lg border border-border">
+                  <Copy className="size-4"/>
+                </button>}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <GitBranch className="size-3.5"/>
+                  <select aria-label="Etapa de venta WAHA"
+                    value={settings[active.id]?.stage_id || stageOf(active)?.id || ""}
+                    onChange={e=>void saveSetting(active.id,{stage_id:e.target.value||null})}
+                    className="h-8 max-w-40 rounded-lg border border-input bg-background px-2 text-xs font-semibold">
+                    {!stages.length && <option value="">Sin etapas</option>}
+                    {stages.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}
+                  </select>
+                </label>
+                <span className="text-[11px] text-muted-foreground">
+                  Último: {ts(active.lastMessage?.timestamp)}
+                </span>
+              </div>
+            </div>
+            <div className="private-wa-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
+              {messages.length >= messageLimit &&
+                <button type="button" onClick={()=>setMessageLimit(x=>x+80)}
+                  className="mx-auto mb-3 rounded-full border border-border px-3 py-1.5 text-xs text-primary">
+                  Ver anteriores
+                </button>}
+              <div className="mt-auto space-y-2">
+                {messages.map(message =>
+                  <div className={"flex "+(message.fromMe?"justify-end":"justify-start")}
+                    key={message.id}>
+                    <div className={"max-w-[86%] rounded-2xl px-3 py-2 text-[13px] sm:max-w-[70%] "+
+                      (message.fromMe?"rounded-br-sm bg-primary text-primary-foreground":
+                        "rounded-bl-sm border border-border bg-card text-foreground")}>
+                      <p className="whitespace-pre-wrap break-words">
+                        {message.body || (message.hasMedia ? "Archivo multimedia" : "Mensaje no textual")}
+                      </p>
+                      <p className="mt-1 text-right text-[10px] opacity-70">{ts(message.timestamp)}</p>
+                    </div>
+                  </div>)}
+              </div>
+            </div>
+            <form onSubmit={e=>{e.preventDefault();void sendMessage();}}
+              className="flex shrink-0 items-end gap-2 border-t border-border bg-card p-2.5">
+              <textarea rows={1} maxLength={4000} value={draft} onChange={e=>setDraft(e.target.value)}
+                disabled={!connected}
+                placeholder={connected?"Escribí desde WAHA...":"Conectá WAHA para responder"}
+                className="min-h-10 min-w-0 flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm"/>
+              <button type="submit" title="Enviar" disabled={!connected||busy||!draft.trim()}
+                className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40">
+                <Send className="size-4"/></button>
+            </form>
+          </>}
+        </section>
+      </div>
+    </div>
+  );
+}
