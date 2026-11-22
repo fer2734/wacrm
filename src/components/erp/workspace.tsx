@@ -55,6 +55,8 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
  const [selectedId,setSelectedId] = useState("");
  const [tab,setTab] = useState(administration?"resumen":"operaciones");
  const [search,setSearch] = useState("");
+ const [editingCustomer,setEditingCustomer] = useState<Customer | null>(null);
+ const [reportMonth,setReportMonth] = useState(today().slice(0,7));
  const [paymentInstallment,setPaymentInstallment] = useState<string | null>(null);
  const admin = role==="propietario" || role==="administracion";
  const selected = data.sales.find(s=>s.id===selectedId) || data.sales[0] || null;
@@ -112,15 +114,19 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
  async function addCustomer(e:FormEvent<HTMLFormElement>){
    e.preventDefault(); const f=e.currentTarget; const v=new FormData(f);
    await transact(async()=>{
-     const {error}=await createClient().from("erp_customers").insert({
-       account_id:accountId,created_by:user!.id,agent_id:admin?d(v.get("agent_id")):user!.id,
+     const payload={
+       agent_id:admin?d(v.get("agent_id")):user!.id,
        full_name:d(v.get("full_name")),document_number:d(v.get("document_number"))||null,
        phone:d(v.get("phone")),email:d(v.get("email"))||null,address:d(v.get("address"))||null,
        city:d(v.get("city"))||null,province:d(v.get("province"))||null,notes:d(v.get("notes"))||null,
-       crm_contact_id:d(v.get("crm_contact_id"))||null
-     });
+       crm_contact_id:d(v.get("crm_contact_id"))||null,updated_at:new Date().toISOString()
+     };
+     const query=editingCustomer
+       ? createClient().from("erp_customers").update(payload).eq("id",editingCustomer.id)
+       : createClient().from("erp_customers").insert({...payload,account_id:accountId,created_by:user!.id});
+     const {error}=await query;
      if(error)throw error;
-     f.reset();
+     f.reset();setEditingCustomer(null);
    },"Ficha de cliente guardada");
  }
  async function addSale(e:FormEvent<HTMLFormElement>){
@@ -257,6 +263,9 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
  const pendingTotal=data.payments.filter(p=>p.status==="pendiente").reduce((a,p)=>a+Number(p.amount),0);
  const confirmedTotal=data.payments.filter(p=>p.status==="confirmado").reduce((a,p)=>a+Number(p.amount),0);
  const expenseTotal=data.expenses.reduce((a,p)=>a+Number(p.amount),0);
+ const monthlyConfirmed=data.payments.filter(p=>p.status==="confirmado"&&p.paid_at.startsWith(reportMonth)).reduce((a,p)=>a+Number(p.amount),0);
+ const monthlyExpenses=data.expenses.filter(p=>p.expense_date.startsWith(reportMonth)).reduce((a,p)=>a+Number(p.amount),0);
+ const monthlySales=data.sales.filter(s=>s.created_at.startsWith(reportMonth)).length;
  const outstanding=data.installments.reduce((a,i)=>a+Math.max(0,Number(i.amount)-validated(i.id)),0);
  const overdue=data.installments.filter(i=>i.due_date<today()).reduce((a,i)=>a+Math.max(0,Number(i.amount)-validated(i.id)),0);
  const selectedInstallments=useMemo(()=>data.installments.filter(i=>i.sale_id===selected?.id).sort((a,b)=>a.installment_number-b.installment_number),[data.installments,selected?.id]);
@@ -302,20 +311,20 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
      <button key={key} type="button" onClick={()=>setTab(key)}
        className={"shrink-0 rounded-full border px-3 py-2 text-xs font-semibold "+(tab===key?"border-primary bg-primary text-primary-foreground":"border-border bg-card text-foreground")}>{name}</button>)}</div>
    {!administration&&tab==="clientes"&&<div className="grid gap-3 lg:grid-cols-2">
-     <Block title="Nueva ficha de cliente"><form onSubmit={addCustomer} className="grid grid-cols-2 gap-2">
-       <label className={label+" col-span-2"}>Nombre completo *<input className={input} name="full_name" required minLength={2}/></label>
-       <label className={label}>DNI / CUIT<input className={input} name="document_number"/></label>
-       <label className={label}>Teléfono *<input className={input} name="phone" required inputMode="tel"/></label>
-       <label className={label+" col-span-2"}>Correo<input className={input} name="email" type="email"/></label>
-       <label className={label+" col-span-2"}>Domicilio<input className={input} name="address"/></label>
-       <label className={label}>Localidad<input className={input} name="city"/></label>
-       <label className={label}>Provincia<input className={input} name="province" defaultValue="Río Negro"/></label>
-       {admin&&<label className={label+" col-span-2"}>Asesor<select className={input} name="agent_id" defaultValue={user?.id}>{data.people.filter(p=>data.members.some(m=>m.user_id===p.user_id&&m.erp_role!=="consulta")).map(p=><option value={p.user_id} key={p.user_id}>{p.full_name||p.email}</option>)}</select></label>}
-       <label className={label+" col-span-2"}>Vincular contacto del CRM<select className={input} name="crm_contact_id"><option value="">Sin vincular</option>{data.contacts.map(c=><option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}</select></label>
-       <label className={label+" col-span-2"}>Observaciones<textarea className={input} rows={2} name="notes"/></label>
-       <div className="col-span-2"><FormAction busy={busy}>Guardar ficha</FormAction></div>
+     <Block title={editingCustomer?"Editar ficha de cliente":"Nueva ficha de cliente"}><form key={editingCustomer?.id||"new"} onSubmit={addCustomer} className="grid grid-cols-2 gap-2">
+       <label className={label+" col-span-2"}>Nombre completo *<input className={input} name="full_name" defaultValue={editingCustomer?.full_name||""} required minLength={2}/></label>
+       <label className={label}>DNI / CUIT<input className={input} name="document_number" defaultValue={editingCustomer?.document_number||""}/></label>
+       <label className={label}>Teléfono *<input className={input} name="phone" defaultValue={editingCustomer?.phone||""} required inputMode="tel"/></label>
+       <label className={label+" col-span-2"}>Correo<input className={input} name="email" type="email" defaultValue={editingCustomer?.email||""}/></label>
+       <label className={label+" col-span-2"}>Domicilio<input className={input} name="address" defaultValue={editingCustomer?.address||""}/></label>
+       <label className={label}>Localidad<input className={input} name="city" defaultValue={editingCustomer?.city||""}/></label>
+       <label className={label}>Provincia<input className={input} name="province" defaultValue={editingCustomer?.province||"Río Negro"}/></label>
+       {admin&&<label className={label+" col-span-2"}>Asesor<select className={input} name="agent_id" defaultValue={editingCustomer?.agent_id||user?.id}>{data.people.filter(p=>data.members.some(m=>m.user_id===p.user_id&&m.erp_role!=="consulta")).map(p=><option value={p.user_id} key={p.user_id}>{p.full_name||p.email}</option>)}</select></label>}
+       <label className={label+" col-span-2"}>Vincular contacto del CRM<select className={input} name="crm_contact_id" defaultValue={editingCustomer?.crm_contact_id||""}><option value="">Sin vincular</option>{data.contacts.map(c=><option key={c.id} value={c.id}>{c.name} · {c.phone}</option>)}</select></label>
+       <label className={label+" col-span-2"}>Observaciones<textarea className={input} rows={2} name="notes" defaultValue={editingCustomer?.notes||""}/></label>
+       <div className="col-span-2 flex gap-2"><FormAction busy={busy}>{editingCustomer?"Guardar cambios":"Guardar ficha"}</FormAction>{editingCustomer&&<button type="button" className={secondary} onClick={()=>setEditingCustomer(null)}>Cancelar</button>}</div>
      </form></Block>
-     <Block title={"Clientes ("+data.customers.length+")"}><div className="max-h-[65vh] space-y-2 overflow-auto">{data.customers.map(c=><div key={c.id} className="rounded-lg border border-border p-3 text-sm"><b>{c.full_name}</b><p className="text-xs text-muted-foreground">{c.phone} · {c.city||"Sin localidad"}</p><p className="mt-1 text-xs">{c.document_number||"Sin documento"} · {agentName(c.agent_id)}</p>{c.notes&&<p className="text-xs">{c.notes}</p>}</div>)}{!data.customers.length&&<p className="text-sm text-muted-foreground">Cargá tu primer cliente.</p>}</div></Block>
+     <Block title={"Clientes ("+data.customers.length+")"}><div className="max-h-[65vh] space-y-2 overflow-auto">{data.customers.map(c=><div key={c.id} className="rounded-lg border border-border p-3 text-sm"><b>{c.full_name}</b><p className="text-xs text-muted-foreground">{c.phone} · {c.city||"Sin localidad"}</p><p className="mt-1 text-xs">{c.document_number||"Sin documento"} · {agentName(c.agent_id)}</p>{c.notes&&<p className="text-xs">{c.notes}</p>}<button type="button" className="mt-2 text-xs font-bold text-primary" onClick={()=>{setEditingCustomer(c);window.scrollTo({top:0,behavior:"smooth"})}}>Editar ficha</button></div>)}{!data.customers.length&&<p className="text-sm text-muted-foreground">Cargá tu primer cliente.</p>}</div></Block>
    </div>}
    {!administration&&tab==="operaciones"&&<div className="grid gap-3 lg:grid-cols-5">
      <div className="space-y-3 lg:col-span-3">
@@ -407,6 +416,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
      <Block title="Documentación adjunta"><div className="space-y-2">{selectedDocuments.map(x=><button key={x.id} onClick={()=>void openDocument(x)} className="flex w-full items-center justify-between gap-2 rounded-lg border border-border p-3 text-left text-xs"><span className="min-w-0"><b>{x.kind}</b><span className="block truncate">{x.file_name}</span></span><span className="shrink-0 text-primary">Ver ↗</span></button>)}{!selectedDocuments.length&&<p className="text-sm text-muted-foreground">Sin documentos cargados.</p>}</div></Block>
    </div>}
    {administration&&admin&&tab==="resumen"&&<>
+     <Block title="Resumen mensual"><div className="grid gap-3 sm:grid-cols-4"><label className={label}>Mes<input className={input} type="month" value={reportMonth} onChange={e=>setReportMonth(e.target.value)}/></label><div><p className="text-xs text-muted-foreground">Ventas del mes</p><b>{monthlySales}</b></div><div><p className="text-xs text-muted-foreground">Cobros validados</p><b>{money(monthlyConfirmed)}</b></div><div><p className="text-xs text-muted-foreground">Gastos del mes</p><b>{money(monthlyExpenses)}</b></div></div></Block>
      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{[["Ventas",data.sales.length.toLocaleString("es-AR")],["Cobrado validado",money(confirmedTotal)],["Por validar",money(pendingTotal)],["Gastos",money(expenseTotal)],["Saldo de cuotas",money(outstanding)],["En mora",money(overdue)],["Clientes",data.customers.length.toLocaleString("es-AR")],["Vehículos",data.inventory.length.toLocaleString("es-AR")]].map(([title,value])=><div className={box} key={title}><p className="text-xs text-muted-foreground">{title}</p><p className="mt-1 text-base font-bold">{value}</p></div>)}</div>
      <Block title="Rendimiento por asesor"><div className="mb-3 flex flex-wrap gap-2"><button className={secondary} onClick={()=>exportCsv("ventas")}>⬇ Exportar ventas CSV</button><button className={secondary} onClick={()=>exportCsv("gastos")}>⬇ Exportar gastos CSV</button></div><div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr className="border-b border-border">{["Asesor","Ventas","Monto pactado","Cobros validados"].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead><tbody>
        {data.people.map(person=>{const sales=data.sales.filter(s=>s.agent_id===person.user_id);const salesIds=new Set(sales.map(s=>s.id));const paid=data.payments.filter(p=>salesIds.has(p.sale_id)&&p.status==="confirmado").reduce((a,p)=>a+Number(p.amount),0);if(!sales.length)return null;
