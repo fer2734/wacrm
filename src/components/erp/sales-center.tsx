@@ -6,6 +6,7 @@ import { CalendarClock, CheckCircle2, ClipboardList, CreditCard, FileSignature, 
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
+import { sections } from "@/lib/erp/application-fields";
 
 type Role = "propietario" | "administracion" | "vendedor" | "consulta";
 type Customer = { id:string; agent_id:string; full_name:string; document_number:string|null; phone:string; email:string|null; address:string|null; city:string|null; province:string|null; notes:string|null; crm_contact_id:string|null; created_at:string };
@@ -19,38 +20,6 @@ type Person = { user_id:string; full_name:string|null; email:string };
 type DB = { customers:Customer[]; sales:Sale[]; installments:Installment[]; payments:Payment[]; documents:Document[]; followups:Followup[]; applications:Application[]; people:Person[] };
 const empty:DB={customers:[],sales:[],installments:[],payments:[],documents:[],followups:[],applications:[],people:[]};
 type Section = "resumen"|"solicitud"|"contrato"|"pagos"|"seguimiento";
-type Field = { key:string; label:string; type?:string; wide?:boolean; options?:string[] };
-const sections: {title:string;fields:Field[]}[]=[
- {title:"Datos de la solicitud",fields:[
-  {key:"contract_number",label:"Contrato N.º"},{key:"receipt_number",label:"Recibo o factura N.º"},
-  {key:"administration_delivery",label:"Fecha de entrega a Administración",type:"date"},
-  {key:"management_delivery",label:"Fecha de entrega a Gerencia",type:"date"}]},
- {title:"Características del plan",fields:[
-  {key:"vehicle_category",label:"Unidad",options:["Auto 0 km","Auto usado","Camioneta 0 km","Camioneta usada","Moto 0 km","Moto usada"]},
-  {key:"brand",label:"Marca"},{key:"model",label:"Modelo"},{key:"model_year",label:"Año",type:"number"},
-  {key:"agreed_delivery",label:"Entrega pactada",wide:true},
-  {key:"trade_in",label:"¿Entrega unidad usada?",options:["No","Sí"]},
-  {key:"trade_brand",label:"Marca de la unidad entregada"},{key:"trade_model",label:"Modelo de la unidad entregada"},
-  {key:"trade_year",label:"Año de la unidad entregada"},{key:"trade_km",label:"Kilómetros",type:"number"},
-  {key:"observations",label:"Observaciones",wide:true}]},
- {title:"Persona física / jurídica",fields:[
-  {key:"full_name",label:"Nombre y apellido / Razón social",wide:true},
-  {key:"dni",label:"D.N.I."},{key:"cuil",label:"CUIL / CUIT"},
-  {key:"birth_date",label:"Fecha de nacimiento",type:"date"},{key:"nationality",label:"Nacionalidad"},
-  {key:"address",label:"Domicilio"},{key:"postal_code",label:"Código postal"},
-  {key:"province",label:"Provincia"},{key:"city",label:"Localidad"},
-  {key:"marital_status",label:"Estado civil",options:["","Soltero/a","Casado/a","Conviviente","Divorciado/a","Viudo/a"]},
-  {key:"email",label:"Correo electrónico",type:"email"},
-  {key:"phone",label:"Teléfono particular",type:"tel"},{key:"additional_phone",label:"Teléfono adicional",type:"tel"},
-  {key:"spouse_name",label:"Nombre del cónyuge"},{key:"spouse_cuil",label:"CUIL del cónyuge"},
-  {key:"spouse_birth",label:"Fecha de nacimiento del cónyuge",type:"date"},{key:"spouse_nationality",label:"Nacionalidad del cónyuge"}]},
- {title:"Datos laborales",fields:[
-  {key:"occupation",label:"Actividad laboral",wide:true},
-  {key:"employer",label:"Empresa / lugar de empleo",wide:true},
-  {key:"net_income",label:"Ingresos netos ($)",type:"number"},{key:"seniority",label:"Antigüedad"},
-  {key:"work_address",label:"Domicilio laboral",wide:true},
-  {key:"salesperson",label:"Nombre del vendedor",wide:true}]}
-];
 const input="min-h-10 w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15";
 const label="block min-w-0 space-y-1.5 text-xs font-semibold text-muted-foreground";
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition-opacity disabled:opacity-50";
