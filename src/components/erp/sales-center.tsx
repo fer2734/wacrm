@@ -260,22 +260,7 @@ export function SalesCenter(){
       </div><button className={ghost} onClick={()=>{setNewSale(true);setEditingSale(false);setSection("resumen")}}><Plus size={14}/> Nueva operación</button></div>
       {clientSales.length>0&&<div className="mt-3 flex flex-wrap gap-2">{clientSales.map(s=><button key={s.id} onClick={()=>{setSaleId(s.id);setSection("resumen");setNewSale(false)}} className={"rounded-lg border px-3 py-2 text-xs font-semibold "+(sale?.id===s.id?"border-primary bg-primary/10 text-primary":"border-border hover:bg-muted")}>{s.vehicle_description}</button>)}</div>}
      </div>
-     {(newSale||!sale)&&<Panel title="Crear una operación para este cliente" icon={<Plus size={18} className="text-primary"/>}>
-      <form onSubmit={createSale} className="grid grid-cols-2 gap-3">
-       <label className={label+" col-span-2"}>Vehículo de interés *<input className={input} name="vehicle_description" placeholder="Ej.: Toyota Hilux SRX 2025" required minLength={2}/></label>
-       <label className={label}>Tipo<select className={input} name="vehicle_type"><option value="auto">Auto</option><option value="camioneta">Camioneta</option><option value="moto">Moto</option><option value="otro">Otro</option></select></label>
-       <label className={label}>Modalidad<select className={input} name="operation_type"><option value="financiacion">Financiación</option><option value="directa">Venta directa</option></select></label>
-       <label className={label}>Valor de referencia ($)<input className={input} type="number" name="price" min="0" step="0.01" defaultValue="0"/></label>
-       <label className={label}>Cuota mensual elegida ($) *<input className={input} type="number" name="installment_amount" min="1" step="0.01" defaultValue="500000" required/></label>
-       <label className={label}>Gastos administrativos ($)<input className={input} type="number" name="admin_fee" min="0" step="0.01" defaultValue="0"/></label>
-       <label className={label}>Cuotas iniciales a generar<input className={input} type="number" name="installment_count" min="1" max="240" defaultValue="15"/></label>
-       <label className={label}>Fecha de ingreso al sistema<input className={input} type="date" name="entry_date" value={entryDate} onChange={e=>{setEntryDate(e.target.value);setSecondDue(addMonth(e.target.value))}} required/></label>
-       <label className={label}>Vencimiento de la cuota 2<input className={input} type="date" name="second_due_date" value={secondDue} min={entryDate} onChange={e=>setSecondDue(e.target.value)} required/></label>
-       <label className={label+" col-span-2"}>Observaciones<textarea className={input} name="notes" rows={2}/></label>
-       <p className="col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground"><b className="text-foreground">Cuota 1 = cuota elegida + gastos administrativos.</b> Se generan inicialmente 15 cuotas por defecto y pueden agregarse cuotas sucesivas cuando sea necesario, sin detenerse en la cuarta.</p>
-       <div className="col-span-2"><Submit busy={busy}>Crear venta y sus cuotas</Submit></div>
-      </form>
-     </Panel>}
+     {!sale&&<Panel title="Sin ventas registradas">Seleccioná «Registrar venta» para completar la solicitud de adhesión y crear la operación de una sola vez.</Panel>}
      {sale&&!newSale&&<>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
        {[["Cuota elegida",money(sale.installment_amount)],["Gastos administrativos",money(sale.admin_fee)],["Cuota 1 total",money(Number(sale.installment_amount)+Number(sale.admin_fee))],["Próximo vencimiento",fmtDate(installments.find(i=>paid(i.id)<Number(i.amount))?.due_date||null)]].map(([k,v])=><div key={k} className="rounded-xl border border-border bg-card p-3"><p className="text-[11px] text-muted-foreground">{k}</p><p className="mt-1 break-words text-sm font-black">{v}</p></div>)}
@@ -289,10 +274,7 @@ export function SalesCenter(){
          ["Vehículo",sale.vehicle_description],["Modalidad",sale.operation_type],["Fecha de ingreso",fmtDate(sale.entry_date||sale.first_due)],["Cuota 2",fmtDate(sale.second_due_date||installments[1]?.due_date||null)],
          ["Cuotas registradas",String(installments.length)],["Entrega de referencia","Desde cuota "+sale.delivery_target_installment+" (sujeta a condiciones)"]
         ].map(([k,v])=><div key={k}><dt className="text-[11px] text-muted-foreground">{k}</dt><dd className="mt-1 font-semibold">{v}</dd></div>)}</dl>
-        <label className={label+" mt-4"}>Estado de la venta<select className={input} value={sale.stage} onChange={e=>void changeStage(e.target.value)} disabled={busy}>
-         {["nuevo","contactado","interesado","documentacion","pactado","activo","no_interesado","caido"].filter(s=>s===sale.stage||!["entrega_en_gestion","entregado"].includes(s)).map(s=><option key={s} value={s}>{s.replaceAll("_"," ")}</option>)}
-         {["entrega_en_gestion","entregado"].includes(sale.stage)&&<option value={sale.stage}>{sale.stage.replaceAll("_"," ")}</option>}
-        </select></label>
+        {admin&&<button className={ghost+" mt-4"} type="button" onClick={()=>{setEditingSale(true);setNewSale(false)}}>Modificar venta y solicitud</button>}
         {sale.crm_conversation_id&&<Link className="mt-3 inline-block text-xs font-bold text-primary" href={"/inbox?conversation="+encodeURIComponent(sale.crm_conversation_id)}>Abrir chat del CRM</Link>}
        </Panel>
        <Panel title="Accesos rápidos" icon={<FolderOpen size={17} className="text-primary"/>}>
