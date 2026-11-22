@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Check, ChevronDown, Copy, Edit3, EllipsisVertical, GitBranch,
   LockKeyhole, MessageCircle, RefreshCw, Search, Send, Settings2,
-  Smartphone, Unplug, UserRound, Wifi, WifiOff, X, Upload, ContactRound
+  Smartphone, Unplug, UserRound, Wifi, WifiOff, X, Upload, ContactRound, Trash2
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -238,6 +238,40 @@ export default function PrivateInboxV2() {
       await loadInbox();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo conectar a WhatsApp");
+    } finally { setBusy(false); }
+  }
+
+  async function erasePrivateData() {
+    if (busy || !user) return;
+    const typed = window.prompt(
+      "Vas a borrar definitivamente TODOS los chats, mensajes, contactos importados y credenciales de esta bandeja privada. No afecta al CRM comercial ni a los chats del teléfono. Escribí BORRAR TODO para confirmar:"
+    );
+    if (typed !== "BORRAR TODO") return;
+    if (!window.confirm("Última confirmación: ¿eliminar permanentemente los datos de TU WhatsApp privado? Esta acción no se puede deshacer.")) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/private-whatsapp/erase", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: "BORRAR TODO" })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.erased) throw new Error(result.error || "No se pudo borrar la bandeja");
+      setInbox(null);
+      setConnection({ status: "not_connected" });
+      setActive(null);
+      setChats([]);
+      setMessages([]);
+      setTotal(0);
+      setShowConnection(false);
+      setSearch("");
+      setDraft("");
+      const removed = Number(result.counts?.messages || 0);
+      toast.success("Se borró tu WhatsApp privado: " + removed.toLocaleString("es-AR") +
+        " mensajes eliminados. El CRM comercial y el WhatsApp del celular no cambiaron.");
+      window.dispatchEvent(new Event("wacrm:private-inbox-name-changed"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "No se pudo eliminar todo");
     } finally { setBusy(false); }
   }
 
@@ -502,6 +536,18 @@ export default function PrivateInboxV2() {
                 <Upload className="size-4" /> {importingContacts ? "Importando..." : "Importar .VCF"}
               </button>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-foreground">Borrar todos mis datos privados</p>
+              <p className="text-[11px] text-muted-foreground">
+                Elimina sesión, chats, mensajes y agenda importada. No afecta la bandeja comercial.
+              </p>
+            </div>
+            <button type="button" disabled={busy} onClick={() => void erasePrivateData()}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-red-500/50 px-2.5 text-xs font-semibold text-red-600 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400">
+              <Trash2 className="size-4" /> Borrar todo
+            </button>
           </div>
           <p className="text-[11px] text-muted-foreground">
             La conexión mediante dispositivo vinculado no es una integración oficial de WhatsApp.
