@@ -25,12 +25,13 @@ type Revision = { id:string; installment_id:string; previous_due_date:string; re
 type Template = { id:string; name:string; title:string; body_text:string; active:boolean };
 type Fiscal = { id:string; sale_id:string|null; customer_name:string; amount:number; status:string; external_reference:string|null; cae:string|null; issue_date:string };
 type Expense = { id:string; description:string; amount:number; expense_date:string; paid:boolean };
+type AdminDocument = { id:string; expense_id:string|null; kind:string; path:string; file_name:string; mime_type:string; file_size:number; created_at:string };
 type Person = { user_id:string; full_name:string|null; email:string };
 type DB = { customers:C[]; sales:S[]; installments:I[]; payments:P[]; tasks:T[]; accounts:CashAccount[]; movements:Movement[];
  suppliers:Supplier[]; vehicles:Vehicle[]; purchases:Purchase[]; costs:VehicleCost[]; commissions:Commission[];
- checklist:Checklist[]; credits:Credit[]; revisions:Revision[]; templates:Template[]; fiscal:Fiscal[]; expenses:Expense[]; people:Person[] };
+ checklist:Checklist[]; credits:Credit[]; revisions:Revision[]; templates:Template[]; fiscal:Fiscal[]; expenses:Expense[]; people:Person[]; adminDocs:AdminDocument[] };
 const empty:DB = {customers:[],sales:[],installments:[],payments:[],tasks:[],accounts:[],movements:[],suppliers:[],
- vehicles:[],purchases:[],costs:[],commissions:[],checklist:[],credits:[],revisions:[],templates:[],fiscal:[],expenses:[],people:[]};
+ vehicles:[],purchases:[],costs:[],commissions:[],checklist:[],credits:[],revisions:[],templates:[],fiscal:[],expenses:[],people:[],adminDocs:[]};
 const money=(value:number)=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(Number(value||0));
 const n=(value:FormDataEntryValue|null)=>Number(String(value||"0").replace(",","."))||0;
 const v=(value:FormDataEntryValue|null)=>String(value||"").trim();
@@ -108,19 +109,20 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
   ]);
   const managementData: [
    CashAccount[],Movement[],Supplier[],Purchase[],VehicleCost[],
-   Commission[],Fiscal[],Expense[],Person[]
+   Commission[],Fiscal[],Expense[],Person[],AdminDocument[]
   ] = management?await Promise.all([
    getRows<CashAccount>("erp_treasury_accounts",account),getRows<Movement>("erp_treasury_movements",account),
    getRows<Supplier>("erp_suppliers",account),getRows<Purchase>("erp_vehicle_purchases",account),
    getRows<VehicleCost>("erp_vehicle_costs",account),getRows<Commission>("erp_commissions",account),
    getRows<Fiscal>("erp_fiscal_documents",account),getRows<Expense>("erp_expenses",account),
-   createClient().from("profiles").select("user_id,full_name,email").eq("account_id",account).then(x=>{if(x.error)throw x.error;return x.data as Person[]})
-  ]):[[],[],[],[],[],[],[],[],[]];
+   createClient().from("profiles").select("user_id,full_name,email").eq("account_id",account).then(x=>{if(x.error)throw x.error;return x.data as Person[]}),
+   getRows<AdminDocument>("erp_admin_documents",account)
+  ]):[[],[],[],[],[],[],[],[],[],[]];
   setData({customers:agentData[0],sales:agentData[1],installments:agentData[2],payments:agentData[3],
    tasks:agentData[4],vehicles:agentData[5],checklist:agentData[6],credits:agentData[7],
    revisions:agentData[8],templates:agentData[9],accounts:managementData[0],movements:managementData[1],
    suppliers:managementData[2],purchases:managementData[3],costs:managementData[4],
-   commissions:managementData[5],fiscal:managementData[6],expenses:managementData[7],people:managementData[8]});
+   commissions:managementData[5],fiscal:managementData[6],expenses:managementData[7],people:managementData[8],adminDocs:managementData[9]});
  },[]);
  useEffect(()=>{
   if(profileLoading||!user||!accountId)return;
@@ -195,7 +197,7 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
  const menu=administration?[
   ["cobranzas","💳 Cartera"],["tareas","📆 Gestiones"],["tesoreria","🏦 Caja y bancos"],
   ["compras","🚘 Compras"],["comisiones","👥 Comisiones"],["entregas","🔑 Entregas"],
-  ["ajustes","🧮 Planes"],["documentos","📄 Contratos / ARCA"],["reportes","📈 Reportes"]
+  ["ajustes","🧮 Planes"],["comprobantes","📎 Comprobantes"],["documentos","📄 Contratos / ARCA"],["reportes","📈 Reportes"]
  ]:[["cartera","💳 Mis clientes"],["tareas","📆 Tareas"],["cotizador","🧮 Cotizador"],["documentos","📄 Solicitudes"]];
 
  function handleForm(e:FormEvent<HTMLFormElement>, fn:(f:FormData)=>Promise<void>,message:string){
@@ -564,6 +566,46 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
     <b>{money(r.previous_amount)} → {money(r.revised_amount)}</b>
     <p>Vencimiento: {dateLabel(r.previous_due_date)} → {dateLabel(r.revised_due_date)}</p><p className={muted}>{r.reason} · {dateLabel(r.created_at)}</p></div>)}
     {!data.revisions.length&&<Notice>Sin revisiones de cuota.</Notice>}</div></Panel>
+  </div>}
+
+  {tab==="comprobantes"&&admin&&<div className="grid gap-3 lg:grid-cols-2">
+   <Panel title="Adjuntar comprobante de gasto o administración">
+    <Notice>Los archivos se guardan en almacenamiento privado y solo pueden abrirlos personas con permiso administrativo. Formatos JPG, PNG, WEBP o PDF, hasta 10 MB.</Notice>
+    <form className="mt-3 space-y-3" onSubmit={e=>handleForm(e,async f=>{
+      const file=f.get("file");
+      if(!(file instanceof File)||file.size<1||file.size>10485760 ||
+        !["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type))
+        throw new Error("Archivo inválido: imagen o PDF de hasta 10 MB");
+      if(!accountId||!user)throw new Error("Sesión no disponible");
+      const expenseId=v(f.get("expense_id"));
+      const name=file.name.replace(/[^a-zA-Z0-9_.-]/g,"_").slice(-100);
+      const path=accountId+"/"+crypto.randomUUID()+"-"+name;
+      const db=createClient();
+      const stored=await db.storage.from("erp-administracion").upload(path,file,{contentType:file.type,upsert:false});
+      if(stored.error)throw stored.error;
+      try{
+       await insert("erp_admin_documents",{account_id:accountId,expense_id:expenseId||null,
+        kind:v(f.get("kind")),path,file_name:file.name,mime_type:file.type,file_size:file.size,created_by:user.id});
+      }catch(e){throw new Error("Archivo subido, pero no registrado en el índice. No vuelvas a subirlo sin consultar a administración: "+errorText(e))}
+    },"Archivo administrativo guardado")}>
+      <label className={label}>Concepto<select className={input} name="kind"><option value="gasto">Comprobante de gasto</option>
+       <option value="factura_proveedor">Factura de proveedor</option><option value="banco">Documento bancario</option><option value="otro">Otro</option></select></label>
+      <label className={label}>Gasto asociado<select className={input} name="expense_id"><option value="">Sin gasto específico</option>
+       {data.expenses.map(x=><option value={x.id} key={x.id}>{dateLabel(x.expense_date)} · {x.description} · {money(x.amount)}</option>)}</select></label>
+      <label className={label}>Archivo<input className={input} type="file" name="file" accept=".jpg,.jpeg,.png,.webp,.pdf" required/></label>
+      <Submit working={working}>Guardar comprobante privado</Submit>
+    </form><Link className={outline+" mt-3 inline-flex"} href="/erp/administracion">Cargar gastos</Link>
+   </Panel>
+   <Panel title={"Comprobantes almacenados · "+data.adminDocs.length}>
+    <div className="max-h-[70vh] space-y-2 overflow-auto">{data.adminDocs.slice().sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(x=><div className="flex items-center justify-between gap-2 rounded-lg border border-border p-3 text-xs" key={x.id}>
+      <div className="min-w-0"><b>{x.kind.replaceAll("_"," ")}</b><p className="truncate">{x.file_name}</p>
+       <p className={muted}>{dateLabel(x.created_at)} · {x.expense_id?(data.expenses.find(e=>e.id===x.expense_id)?.description||"Gasto asociado"):"Documento general"}</p></div>
+      <button type="button" className={outline} onClick={()=>{
+       const popup=window.open("","_blank");
+       void createClient().storage.from("erp-administracion").createSignedUrl(x.path,120)
+        .then(({data,error})=>{if(error||!data?.signedUrl){popup?.close();toast.error(error?.message||"No se pudo abrir");return}if(popup)popup.location.href=data.signedUrl;else window.location.href=data.signedUrl});
+      }}>Abrir</button></div>)}{!data.adminDocs.length&&<Notice>No hay comprobantes administrativos cargados.</Notice>}</div>
+   </Panel>
   </div>}
 
   {tab==="documentos"&&<div className="grid gap-3 lg:grid-cols-2">
