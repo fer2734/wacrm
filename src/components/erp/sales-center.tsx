@@ -211,14 +211,23 @@ export function SalesCenter(){
     <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Ventas y cartera de clientes</h1>
     <p className="mt-1 text-xs text-muted-foreground">Todo el legajo de cada cliente, sus contratos, cuotas y seguimiento en un solo lugar.</p>
    </div>
-   <div className="flex flex-wrap gap-2"><button className={ghost} onClick={()=>void refresh().catch(e=>toast.error(errorText(e)))}><RefreshCw size={14}/> Actualizar</button>
+   <div className="flex flex-wrap gap-2"><button className={button} onClick={()=>{setNewSale(true);setEditingSale(false)}}><Plus size={16}/> Registrar venta</button><button className={ghost} onClick={()=>void refresh().catch(e=>toast.error(errorText(e)))}><RefreshCw size={14}/> Actualizar</button>
     {admin&&<Link href="/erp/administracion" className={ghost}>Administración</Link>}</div>
   </header>
+  {(newSale||editingSale)&&accountId&&user?
+   <CompleteSaleEditor key={editingSale?"edit-"+sale?.id:"new-"+(customer?.id||"none")}
+    accountId={accountId} userId={user.id} admin={admin} customers={data.customers}
+    selectedCustomer={customer} sale={editingSale?sale:null} application={editingSale?application:{}}
+    people={data.people} onCancel={()=>{setNewSale(false);setEditingSale(false)}}
+    onSaved={async(id)=>{const updated=await load(accountId);const added=updated.sales.find(x=>x.id===id);
+     if(added){setCustomerId(added.customer_id);setSaleId(added.id)}
+     setNewSale(false);setEditingSale(false);setSection("contrato");}}
+   />:
   <div className="grid min-w-0 gap-4 lg:grid-cols-[310px_minmax(0,1fr)]">
    <aside className="min-w-0 rounded-2xl border border-border bg-card p-3 shadow-sm lg:sticky lg:top-3 lg:h-[calc(100vh-7rem)]">
     <div className="mb-3 flex items-center justify-between gap-2 px-1">
      <div><p className="text-sm font-extrabold">Clientes</p><p className="text-[11px] text-muted-foreground">{data.customers.length} en la cartera</p></div>
-     <button className={ghost} title="Agregar cliente" onClick={()=>setCreatingCustomer(x=>!x)}><Plus size={15}/> Nuevo</button>
+     <button className={ghost} title="Registrar venta" onClick={()=>{setNewSale(true);setEditingSale(false)}}><Plus size={15}/> Venta</button>
     </div>
     <div className="relative mb-3"><Search size={15} className="absolute left-3 top-3 text-muted-foreground"/><input className={input+" pl-9"} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar nombre, DNI, teléfono…" aria-label="Buscar clientes"/></div>
     {creatingCustomer&&<form className="mb-3 space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3" onSubmit={createCustomer}>
@@ -233,7 +242,7 @@ export function SalesCenter(){
     </form>}
     <div className="crm-scrollbar max-h-[45vh] space-y-1.5 overflow-y-auto pr-1 lg:max-h-[calc(100vh-18rem)]">
      {filtered.map(c=>{const count=data.sales.filter(s=>s.customer_id===c.id).length;const active=customer?.id===c.id;
-      return <button key={c.id} className={"w-full rounded-xl border px-3 py-3 text-left transition-colors "+(active?"border-primary/50 bg-primary/10":"border-transparent bg-muted/25 hover:border-border hover:bg-muted/60")} onClick={()=>{setCustomerId(c.id);setSaleId("");setSection("resumen");setNewSale(false)}}>
+      return <button key={c.id} className={"w-full rounded-xl border px-3 py-3 text-left transition-colors "+(active?"border-primary/50 bg-primary/10":"border-transparent bg-muted/25 hover:border-border hover:bg-muted/60")} onClick={()=>{setCustomerId(c.id);setSaleId("");setSection("resumen");setNewSale(false);setEditingSale(false)}}>
        <div className="flex items-center gap-2"><div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><UserRound size={17}/></div>
         <div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold">{c.full_name}</p><p className="truncate text-[11px] text-muted-foreground">{c.phone}{c.city?" · "+c.city:""}</p></div>
         {count>0&&<span className="rounded-md bg-background px-1.5 py-1 text-[10px] font-bold">{count}</span>}
@@ -248,7 +257,7 @@ export function SalesCenter(){
       <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0">
        <p className="text-xs font-bold uppercase tracking-wider text-primary">Legajo comercial</p><h2 className="mt-1 text-xl font-black">{customer.full_name}</h2>
        <p className="mt-1 text-xs text-muted-foreground">{customer.phone} · {customer.document_number||"DNI sin cargar"} · Asesor: {person(customer.agent_id)}</p>
-      </div><button className={ghost} onClick={()=>{setNewSale(x=>!x);setSection("resumen")}}><Plus size={14}/> Nueva operación</button></div>
+      </div><button className={ghost} onClick={()=>{setNewSale(true);setEditingSale(false);setSection("resumen")}}><Plus size={14}/> Nueva operación</button></div>
       {clientSales.length>0&&<div className="mt-3 flex flex-wrap gap-2">{clientSales.map(s=><button key={s.id} onClick={()=>{setSaleId(s.id);setSection("resumen");setNewSale(false)}} className={"rounded-lg border px-3 py-2 text-xs font-semibold "+(sale?.id===s.id?"border-primary bg-primary/10 text-primary":"border-border hover:bg-muted")}>{s.vehicle_description}</button>)}</div>}
      </div>
      {(newSale||!sale)&&<Panel title="Crear una operación para este cliente" icon={<Plus size={18} className="text-primary"/>}>
@@ -381,6 +390,6 @@ export function SalesCenter(){
      </>}
     </>}
    </main>
-  </div>
+  </div>}
  </div>;
 }
