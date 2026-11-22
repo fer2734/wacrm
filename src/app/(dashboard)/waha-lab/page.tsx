@@ -206,6 +206,10 @@ export default function WahaLab() {
   const latestWorkerActive = useRef(false);
   const stillConnected = useRef(false);
   const [indexedChats, setIndexedChats] = useState<WaChat[]>([]);
+  const [snapshotReady, setSnapshotReady] = useState(false);
+  const [snapshotLoaded, setSnapshotLoaded] = useState(false);
+  const [namesLastCheckedAt, setNamesLastCheckedAt] = useState<string | null>(null);
+  const snapshotSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const indexInFlight = useRef(false);
   const [indexedCount, setIndexedCount] = useState(0);
   const [indexComplete, setIndexComplete] = useState(false);
@@ -261,7 +265,9 @@ export default function WahaLab() {
   const loadChats = useCallback(async () => {
     if (!user || !connected) return;
     try {
-      const result = await json("/api/waha-lab?action=chats&limit=200&offset=0");
+      // Refresh only the most recent chats, not every archived/history
+      // record, which already lives in the owner's private snapshot.
+      const result = await json("/api/waha-lab?action=chats&limit=30&offset=0");
       const items: WaChat[] = normalizedList(result);
       setChats(items);
       setActive(prev => prev ? items.find(x => x.id === prev.id) || prev : null);
@@ -406,10 +412,80 @@ export default function WahaLab() {
       }
       setContacts(allContacts);
       setLids(allLids);
+      setNamesLastCheckedAt(new Date().toISOString());
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudieron cargar los contactos WAHA");
     } finally { setNamesLoading(false); }
   }, [user, connected]);
+
+  useEffect(() => {
+    if (!user) { setSnapshotReady(false); return; }
+    let cancelled = false;
+    setSnapshotReady(false);
+    const db = createClient();
+    void db.from("waha_lab_snapshots")
+      .select("indexed_chats,previews,checked_times,last_full_scan,contacts,lids,names_checked_at,session_identity")
+      .eq("owner_user_id", user.id).maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        const restoredChats = normalizedList(data.indexed_chats);
+        if (restoredChats.length) {
+          setIndexedChats(restoredChats);
+          setIndexedCount(restoredChats.length);
+          setSnapshotLoaded(true);
+        }
+        if (data.previews && typeof data.previews === "object" &&
+            !Array.isArray(data.previews))
+          setLatestByChat(data.previews as Record<string, LatestPreview>);
+        if (data.checked_times && typeof data.checked_times === "object" &&
+            !Array.isArray(data.checked_times)) {
+          const checked: Array<[string, number]> = [];
+          for (const [id, stamp] of Object.entries(data.checked_times)) {
+            if (typeof stamp === "number" && Number.isFinite(stamp) &&
+                stamp > 0 && stamp <= Date.now()) checked.push([id, stamp]);
+          }
+          latestCheckedAt.current = new Map(checked);
+          setVerifiedTotal(checked.length);
+        }
+        if (Array.isArray(data.contacts)) setContacts(data.contacts as WaContact[]);
+        if (Array.isArray(data.lids)) setLids(data.lids as WaLid[]);
+        if (typeof data.names_checked_at === "string") setNamesLastCheckedAt(data.names_checked_at);
+        if (typeof data.last_full_scan === "string") {
+          setLastIndexAt(data.last_full_scan);
+          setIndexComplete(true);
+        }
+      })
+      .finally(() => { if (!cancelled) setSnapshotReady(true); });
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  // Store only per-agent chat metadata and text previews in Supabase under
+  // owner-only RLS; NEVER store media bytes or access tokens here.
+  // A throttled save avoids one database request per incoming message.
+  useEffect(() => {
+    if (!snapshotReady || !user || !connected || !indexedChats.length ||
+        snapshotSaveTimer.current) return;
+    snapshotSaveTimer.current = setTimeout(() => {
+      snapshotSaveTimer.current = null;
+      const checks = Object.fromEntries([...latestCheckedAt.current.entries()].slice(0, 5000));
+      void createClient().from("waha_lab_snapshots").upsert({
+        owner_user_id: user.id,
+        session_identity: status.me?.id || null,
+        indexed_chats: indexedChats.slice(0, 5000),
+        previews: latestByChat,
+        checked_times: checks,
+        last_full_scan: lastIndexAt,
+        contacts: contacts.slice(0, 5000),
+        lids: lids.slice(0, 5000),
+        names_checked_at: namesLastCheckedAt,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "owner_user_id" })
+      .then(({ error }) => {
+        if (error) console.warn("Private WAHA snapshot could not be saved:", error.message);
+      });
+    }, 7000);
+  }, [snapshotReady, connected, user?.id, indexedChats, latestByChat,
+    lastIndexAt, namesLastCheckedAt, contacts, lids, status.me?.id]);
 
   useEffect(() => { if (user) void getStatus(); }, [user, getStatus]);
   useEffect(() => {
@@ -420,7 +496,7 @@ export default function WahaLab() {
   useEffect(() => {
     if (!connected) return;
     void loadChats();
-    const handle = window.setInterval(() => void loadChats(), 8000);
+    const handle = window.setInterval(() => void loadChats(), 30000);
     return () => window.clearInterval(handle);
   }, [connected, loadChats]);
   useEffect(() => {
@@ -430,15 +506,19 @@ export default function WahaLab() {
     return () => window.clearInterval(handle);
   }, [connected, loadMessages, active?.id]);
   useEffect(() => {
-    if (!connected) { setIndexedChats([]); setLists([]); return; }
-    void loadIndex();
+    if (!connected || !snapshotReady) return;
+    // The snapshot remains valid across navigation/reload. Refresh a small
+    // recent window on entering; a full 555-chat scan is only done if stale.
+    const fresh = lastIndexAt && Date.now() - Date.parse(lastIndexAt) < 6*60*60*1000;
+    if (!fresh) void loadIndex();
     void loadLists();
     const handle = window.setInterval(() => {
-      void loadIndex();
+      if (!lastIndexAt || Date.now() - Date.parse(lastIndexAt) >= 6*60*60*1000)
+        void loadIndex();
       void loadLists();
-    }, 60000);
+    }, 300000);
     return () => window.clearInterval(handle);
-  }, [connected, loadIndex, loadLists]);
+  }, [connected, snapshotReady, lastIndexAt, loadIndex, loadLists]);
   const selectedLabelId = view === "favorites" ?
     lists.find(item => item.type === 3 && item.isActive !== false)?.id :
     view.startsWith("label:") ? view.slice(6) : undefined;
@@ -448,7 +528,12 @@ export default function WahaLab() {
     const handle = window.setInterval(() => void loadLabelChats(selectedLabelId), 60000);
     return () => window.clearInterval(handle);
   }, [connected, selectedLabelId, loadLabelChats]);
-  useEffect(() => { if (connected) void loadNames(); }, [connected, loadNames]);
+  useEffect(() => {
+    if (!connected || !snapshotReady) return;
+    const fresh = namesLastCheckedAt &&
+      Date.now() - Date.parse(namesLastCheckedAt) < 6*60*60*1000;
+    if (!fresh) void loadNames();
+  }, [connected, snapshotReady, namesLastCheckedAt, loadNames]);
   useEffect(() => {
     if (!user) return;
     const db = createClient();
@@ -645,7 +730,7 @@ export default function WahaLab() {
   }, []);
 
   useEffect(() => {
-    if (!connected || !allChats.length) return;
+    if (!connected || !snapshotReady || !allChats.length) return;
     const now = Date.now();
     // Verify active chats first, then archived ones. The newest 30 receive
     // periodic rechecks; older history is checked once unless manually retried.
@@ -664,7 +749,7 @@ export default function WahaLab() {
       index++;
     }
     void verifyLatest();
-  }, [connected, allChats, verifyLatest]);
+  }, [connected, snapshotReady, allChats, verifyLatest]);
 
   function refreshVerifiedPreviews() {
     latestQueue.current = [];
@@ -1036,7 +1121,7 @@ export default function WahaLab() {
                 {listsLoading
                   ? "Sincronizando: " + indexedCount.toLocaleString("es-AR") + " chats · lotes de " + indexPageSize
                   : indexComplete
-                    ? "Chats recuperados: " + allChats.length.toLocaleString("es-AR")
+                    ? "Chats guardados: " + allChats.length.toLocaleString("es-AR")
                     : "Chats recuperados hasta ahora: " + allChats.length.toLocaleString("es-AR")}
               </span>
               <button type="button" disabled={listsLoading || !connected}
@@ -1048,7 +1133,8 @@ export default function WahaLab() {
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 {checkingLatest && <LoaderCircle className="size-3 animate-spin" />}
-                Chats revisados: {verifiedTotal.toLocaleString("es-AR")} / {allChats.length.toLocaleString("es-AR")} ·
+                {snapshotLoaded && !checkingLatest ? "Verificaciones guardadas: " : "Chats revisados: "}
+                {verifiedTotal.toLocaleString("es-AR")} / {allChats.length.toLocaleString("es-AR")} ·
                 Con contenido: {Object.values(latestByChat).filter(v => v.status === "verified" && meaningfulMessage(v.message)).length.toLocaleString("es-AR")}
               </span>
               <button type="button" disabled={!connected}
