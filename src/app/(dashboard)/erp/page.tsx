@@ -1,2 +1,2 @@
-import { ErpWorkspace } from "@/components/erp/workspace";
-export default function VentasErpPage(){return <ErpWorkspace/>;}
+import { SalesCenter } from "@/components/erp/sales-center";
+export default function VentasErpPage(){return <SalesCenter/>;}
