@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft, Check, ChevronDown, Copy, Edit3, GitBranch, LoaderCircle,
+  Archive, ArchiveRestore, ArrowLeft, Check, ChevronDown, Copy, Edit3, GitBranch, LoaderCircle,
   LockKeyhole, MessageCircle, RefreshCw, Search, Send, Settings2, Smartphone,
   Unplug, Wifi, WifiOff, X
 } from "lucide-react";
@@ -15,7 +15,10 @@ type WaStatus = { status?: string; engine?: { engine?: string } | string; me?: {
 type WaMessage = { id: string; timestamp: number; fromMe?: boolean;
   body?: string; type?: string; hasMedia?: boolean };
 type WaChat = { id: string; name?: string; picture?: string | null;
-  lastMessage?: WaMessage | null; unreadCount?: number; _chat?: { unreadCount?: number } };
+  lastMessage?: WaMessage | null; unreadCount?: number;
+  archived?: boolean; isArchived?: boolean; isFavorite?: boolean;
+  _chat?: { unreadCount?: number; archived?: boolean; isArchived?: boolean; isFavorite?: boolean } };
+type WaLabel = { id: string; name: string; type?: number; isActive?: boolean; colorHex?: string };
 type WaContact = { id: string; number?: string; name?: string; pushname?: string;
   shortName?: string; isMyContact?: boolean };
 type WaLid = { lid: string; pn: string | null };
@@ -23,6 +26,42 @@ type Stage = { id: string; name: string; color: string; position: number };
 type Setting = { chat_id: string; alias: string | null; stage_id: string | null };
 type Inbox = { id: string; display_name: string };
 
+// WAHA WEBJS exposes archived state on full chats; overview may include
+// it inside _chat. Preserve only explicit boolean values.
+function archivedFlag(chat: WaChat): boolean {
+  return chat.archived === true || chat.isArchived === true ||
+    chat._chat?.archived === true || chat._chat?.isArchived === true;
+}
+function normalizeChat(value: unknown): WaChat | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const rawId = item.id;
+  const id = typeof rawId === "string" ? rawId :
+    rawId && typeof rawId === "object"
+      ? (rawId as Record<string, unknown>)._serialized : null;
+  if (typeof id !== "string" || !/@(c\.us|g\.us|lid)$/.test(id)) return null;
+  const rawInner = item._chat && typeof item._chat === "object"
+    ? item._chat as Record<string, unknown> : null;
+  const archived = typeof item.archived === "boolean" ? item.archived :
+    typeof item.isArchived === "boolean" ? item.isArchived :
+    typeof rawInner?.archived === "boolean" ? rawInner.archived :
+    typeof rawInner?.isArchived === "boolean" ? rawInner.isArchived : undefined;
+  const rawLast = item.lastMessage && typeof item.lastMessage === "object"
+    ? item.lastMessage as WaMessage : null;
+  return { id,
+    name: typeof item.name === "string" ? item.name : undefined,
+    lastMessage: rawLast,
+    unreadCount: typeof item.unreadCount === "number" ? item.unreadCount :
+      typeof rawInner?.unreadCount === "number" ? rawInner.unreadCount : 0,
+    archived, isFavorite: item.isFavorite === true || rawInner?.isFavorite === true
+  };
+}
+function normalizedList(value: unknown): WaChat[] {
+  const array = Array.isArray(value) ? value :
+    value && typeof value === "object" && Array.isArray((value as { chats?: unknown }).chats)
+      ? (value as { chats: unknown[] }).chats : [];
+  return array.map(normalizeChat).filter((c): c is WaChat => c !== null);
+}
 function ts(value: number | null | undefined): string {
   if (!value || !Number.isFinite(value)) return "Sin mensajes";
   const n = value > 100000000000 ? value : value * 1000;
@@ -63,6 +102,13 @@ export default function WahaLab() {
   const [pairingError, setPairingError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [chats, setChats] = useState<WaChat[]>([]);
+  const [indexedChats, setIndexedChats] = useState<WaChat[]>([]);
+  const [lists, setLists] = useState<WaLabel[]>([]);
+  const [labelChats, setLabelChats] = useState<Record<string, WaChat[]>>({});
+  const [view, setView] = useState("all");
+  const [listsLoading, setListsLoading] = useState(false);
+  const [listsError, setListsError] = useState("");
+  const [archivingId, setArchivingId] = useState<string | null>(null);
   const [contacts, setContacts] = useState<WaContact[]>([]);
   const [lids, setLids] = useState<WaLid[]>([]);
   const [limit, setLimit] = useState(80);
@@ -102,13 +148,54 @@ export default function WahaLab() {
     if (!user || !connected) return;
     try {
       const result = await json("/api/waha-lab?action=chats&limit=" + limit + "&offset=0");
-      const items: WaChat[] = Array.isArray(result) ? result : result.chats || result.data || [];
+      const items: WaChat[] = normalizedList(result);
       setChats(items);
       setActive(prev => prev ? items.find(x => x.id === prev.id) || prev : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron consultar los chats");
     }
   }, [user, connected, limit]);
+  const loadIndex = useCallback(async () => {
+    if (!user || !connected) return;
+    setListsLoading(true);
+    try {
+      const collected = new Map<string, WaChat>();
+      for (let offset = 0; offset < 4000; offset += 200) {
+        const result = await json("/api/waha-lab?action=chat-index&limit=200&offset=" + offset);
+        const page = normalizedList(result);
+        for (const chat of page) collected.set(chat.id, chat);
+        if (page.length < 200) break;
+      }
+      setIndexedChats([...collected.values()]);
+      setListsError("");
+    } catch (err) {
+      setListsError(err instanceof Error ? err.message : "No se pudo sincronizar Archivados");
+    } finally { setListsLoading(false); }
+  }, [user, connected]);
+
+  const loadLists = useCallback(async () => {
+    if (!user || !connected) return;
+    try {
+      const result = await json("/api/waha-lab?action=labels");
+      const raw: unknown[] = Array.isArray(result) ? result : [];
+      setLists(raw.filter((v): v is WaLabel => !!v && typeof v === "object" &&
+        typeof (v as WaLabel).id === "string" && typeof (v as WaLabel).name === "string"));
+    } catch (err) {
+      setListsError(err instanceof Error ? err.message : "No se pudieron sincronizar las listas");
+    }
+  }, [user, connected]);
+
+  const loadLabelChats = useCallback(async (id: string) => {
+    if (!user || !connected) return;
+    try {
+      const result = await json("/api/waha-lab?action=label-chats&labelId=" + encodeURIComponent(id));
+      setLabelChats(current => ({ ...current, [id]: normalizedList(result) }));
+      setListsError("");
+    } catch (err) {
+      setListsError(err instanceof Error ? err.message : "No se pudo sincronizar esta lista");
+    }
+  }, [user, connected]);
+
   const loadMessages = useCallback(async () => {
     if (!active || !connected) return;
     try {
@@ -166,6 +253,25 @@ export default function WahaLab() {
     const handle = window.setInterval(() => void loadMessages(), 4500);
     return () => window.clearInterval(handle);
   }, [connected, loadMessages, active?.id]);
+  useEffect(() => {
+    if (!connected) { setIndexedChats([]); setLists([]); return; }
+    void loadIndex();
+    void loadLists();
+    const handle = window.setInterval(() => {
+      void loadIndex();
+      void loadLists();
+    }, 60000);
+    return () => window.clearInterval(handle);
+  }, [connected, loadIndex, loadLists]);
+  const selectedLabelId = view === "favorites" ?
+    lists.find(item => item.type === 3 && item.isActive !== false)?.id :
+    view.startsWith("label:") ? view.slice(6) : undefined;
+  useEffect(() => {
+    if (!connected || !selectedLabelId) return;
+    void loadLabelChats(selectedLabelId);
+    const handle = window.setInterval(() => void loadLabelChats(selectedLabelId), 60000);
+    return () => window.clearInterval(handle);
+  }, [connected, selectedLabelId, loadLabelChats]);
   useEffect(() => { if (connected) void loadNames(); }, [connected, loadNames]);
   useEffect(() => {
     if (!user) return;
@@ -225,13 +331,49 @@ export default function WahaLab() {
   const stageOf = (chat: WaChat): Stage | undefined =>
     stages.find(s => s.id === settings[chat.id]?.stage_id) ||
     stages.find(s => s.name.toLocaleLowerCase("es-AR") === "nuevo contacto");
+  const allChats = useMemo(() => {
+    const map = new Map<string, WaChat>();
+    for (const row of indexedChats) map.set(row.id, row);
+    for (const row of chats) {
+      const stored = map.get(row.id);
+      map.set(row.id, {
+        ...stored, ...row,
+        archived: typeof row.archived === "boolean" ? row.archived :
+          typeof row._chat?.archived === "boolean" ? row._chat.archived :
+          stored?.archived
+      });
+    }
+    if (selectedLabelId) {
+      for (const row of labelChats[selectedLabelId] || []) {
+        const stored = map.get(row.id);
+        map.set(row.id, { ...row, ...stored,
+          lastMessage: stored?.lastMessage || row.lastMessage,
+          archived: stored?.archived ?? row.archived
+        });
+      }
+    }
+    return [...map.values()].sort((a,b) =>
+      (b.lastMessage?.timestamp || 0) - (a.lastMessage?.timestamp || 0));
+  }, [chats, indexedChats, labelChats, selectedLabelId]);
+
+  const archivedCount = allChats.filter(archivedFlag).length;
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("es-AR");
-    if (!term) return chats;
-    return chats.filter(c => (displayName(c) + " " + phoneOf(c) + " " +
-      c.id).toLocaleLowerCase("es-AR").includes(term));
-  }, [chats, query, contacts, lids, settings]);
-
+    const memberIds = selectedLabelId
+      ? new Set((labelChats[selectedLabelId] || []).map(c => c.id)) : null;
+    return allChats.filter(chat => {
+      const archived = archivedFlag(chat);
+      if (view === "archived" ? !archived : archived) return false;
+      if (view === "unread" && (chat.unreadCount || chat._chat?.unreadCount || 0) <= 0) return false;
+      if (view === "groups" && !chat.id.endsWith("@g.us")) return false;
+      if (view === "favorites" && !selectedLabelId && !chat.isFavorite && !chat._chat?.isFavorite) return false;
+      if ((view === "favorites" || view.startsWith("label:")) && memberIds &&
+          !memberIds.has(chat.id)) return false;
+      if (view.startsWith("label:") && !memberIds) return false;
+      return !term || (displayName(chat) + " " + phoneOf(chat) + " " +
+        chat.id).toLocaleLowerCase("es-AR").includes(term);
+    });
+  }, [allChats, view, query, contacts, lids, settings, selectedLabelId, labelChats]);
   async function requestPairingCode() {
     if (busy || connected) return;
     const phone = pairPhone.replace(/[^0-9]/g, "");
@@ -295,6 +437,25 @@ export default function WahaLab() {
     if (error) { toast.error("No se pudo renombrar la bandeja"); return; }
     setInbox({ ...inbox, display_name: name }); setRename(false);
   }
+  async function toggleArchive(chat: WaChat) {
+    if (!connected || archivingId) return;
+    const archive = !archivedFlag(chat);
+    setArchivingId(chat.id);
+    try {
+      await action(archive ? "archive" : "unarchive", { chatId: chat.id });
+      const update = (row: WaChat) => row.id === chat.id
+        ? { ...row, archived: archive, isArchived: archive,
+            _chat: { ...row._chat, archived: archive } } : row;
+      setIndexedChats(rows => rows.map(update));
+      setChats(rows => rows.map(update));
+      setActive(previous => previous?.id === chat.id ? update(previous) : previous);
+      toast.success(archive ? "Chat movido a Archivados" : "Chat devuelto a conversaciones");
+      void loadIndex();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo actualizar Archivados");
+    } finally { setArchivingId(null); }
+  }
+
   async function sendMessage() {
     if (!active || !connected || busy || !draft.trim()) return;
     setBusy(true);
