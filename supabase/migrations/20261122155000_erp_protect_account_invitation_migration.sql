@@ -141,6 +141,15 @@ BEGIN
       account_role = v_inv.role
   WHERE user_id = v_caller_id;
 
+  -- Add the new team member to the ERP with the role corresponding
+  -- to their existing CRM invitation; administration can refine it later.
+  INSERT INTO erp_memberships(account_id,user_id,erp_role)
+  VALUES(v_inv.account_id,v_caller_id,
+    CASE v_inv.role::text WHEN 'owner' THEN 'propietario'
+      WHEN 'admin' THEN 'administracion' WHEN 'agent' THEN 'vendedor'
+      ELSE 'consulta' END)
+  ON CONFLICT(account_id,user_id) DO UPDATE SET erp_role=EXCLUDED.erp_role;
+
   UPDATE account_invitations
   SET accepted_at = NOW(),
       accepted_by_user_id = v_caller_id
