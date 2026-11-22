@@ -304,7 +304,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
      <div><p className="text-[11px] font-bold uppercase tracking-widest text-primary">Valle Automotores · ERP</p>
        <h1 className="text-xl font-bold sm:text-2xl">{administration?"Administración":"Gestión de ventas"}</h1>
        <p className="text-xs text-muted-foreground">{administration?"Caja, cartera, cobranzas y control":"Fichas, operaciones y seguimiento comercial"} · {role}</p></div>
-     <div className="flex gap-2">{admin&&<Link className={secondary} href={administration?"/erp":"/erp/administracion"}>{administration?"Ver ventas":"Administración"}</Link>}
+     <div className="flex gap-2"><Link className={secondary} href={administration?"/erp/administracion/operaciones":"/erp/avanzado"}>{administration?"Gestión integral":"Cartera y tareas"}</Link>{admin&&<Link className={secondary} href={administration?"/erp":"/erp/administracion"}>{administration?"Ver ventas":"Administración"}</Link>}
        <button className={secondary} onClick={()=>accountId&&role&&void reload(role,accountId).then(()=>toast.success("Datos actualizados")).catch(e=>toast.error(errors(e)))}>↻ Actualizar</button></div>
    </header>
    <div className="flex gap-2 overflow-x-auto pb-1">{nav.map(([key,name])=>
