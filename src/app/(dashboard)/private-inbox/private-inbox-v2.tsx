@@ -265,7 +265,7 @@ export default function PrivateInboxV2() {
     if (!file || !user || importingContacts) return;
     setImportingContacts(true);
     try {
-      if (!/\\.vcf$/i.test(file.name)) throw new Error("Seleccioná un archivo de contactos .VCF");
+      if (!/\.vcf$/i.test(file.name)) throw new Error("Seleccioná un archivo de contactos .VCF");
       if (file.size > 8_000_000) throw new Error("El archivo supera el tamaño admitido");
       const contacts = parseVcardContacts(await file.text());
       if (!contacts.length) throw new Error("No se encontraron contactos con nombre y teléfono en ese archivo");
@@ -294,7 +294,7 @@ export default function PrivateInboxV2() {
     let cancelled = false;
     setLoadingContacts(true);
     const timer = window.setTimeout(() => {
-      const term = addressbookSearch.trim().replace(/[^\\p{L}\\p{N} +@._-]/gu, "").slice(0, 60);
+      const term = addressbookSearch.trim().replace(/[^\p{L}\p{N} +@._-]/gu, "").slice(0, 60);
       let query = createClient().from("private_whatsapp_addressbook")
         .select("id,display_name,phone_digits").eq("owner_user_id", user.id);
       if (term) query = query.or("display_name.ilike.%" + term + "%,phone_digits.ilike.%" + term + "%");
