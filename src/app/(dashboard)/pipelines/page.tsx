@@ -41,11 +41,13 @@ import { useTranslations } from "next-intl";
 // message keys under `Pipelines.page.defaultStages` so the seeded
 // stages come out in the UI language.
 const SPEC_DEFAULT_STAGES = [
-  { nameKey: "newLead", color: "#3b82f6", position: 0 }, // blue
-  { nameKey: "qualified", color: "#eab308", position: 1 }, // yellow
-  { nameKey: "proposalSent", color: "#f97316", position: 2 }, // orange
-  { nameKey: "negotiation", color: "#8b5cf6", position: 3 }, // purple
-  { nameKey: "won", color: "#22c55e", position: 4 }, // green
+  { name: "Nuevo", color: "#3b82f6", position: 0 },
+  { name: "No responde", color: "#94a3b8", position: 1 },
+  { name: "Contactado", color: "#06b6d4", position: 2 },
+  { name: "Interesado", color: "#22c55e", position: 3 },
+  { name: "Venta cerrada", color: "#15803d", position: 4 },
+  { name: "No interesado", color: "#dc2626", position: 5 },
+  { name: "Seguimiento futuro", color: "#f59e0b", position: 6 },
 ] as const;
 
 export default function PipelinesPage() {
@@ -147,7 +149,7 @@ export default function PipelinesPage() {
 
     const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
       pipeline_id: pipeline.id,
-      name: t(`defaultStages.${s.nameKey}`),
+      name: s.name,
       color: s.color,
       position: s.position,
     }));
@@ -306,7 +308,7 @@ export default function PipelinesPage() {
 
     const stagesPayload = SPEC_DEFAULT_STAGES.map((s) => ({
       pipeline_id: pipeline.id,
-      name: t(`defaultStages.${s.nameKey}`),
+      name: s.name,
       color: s.color,
       position: s.position,
     }));
