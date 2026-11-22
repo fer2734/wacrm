@@ -106,6 +106,8 @@ const navItems: NavItem[] = [
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
   { href: "/erp", labelKey: "dashboard", icon: ClipboardList },
   { href: "/erp/administracion", labelKey: "dashboard", icon: BriefcaseBusiness },
+  { href: "/erp/avanzado", labelKey: "dashboard", icon: ClipboardList },
+  { href: "/erp/administracion/operaciones", labelKey: "dashboard", icon: BriefcaseBusiness },
   { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
   { href: "/automations", labelKey: "automations", icon: Zap },
   { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
@@ -233,10 +235,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.filter((item) => accountRole !== "agent" ||
-              ["/inbox", "/private-inbox", "/waha-lab", "/contacts", "/notifications", "/pipelines", "/agenda", "/erp"].includes(item.href)).map((item) => {
+              ["/inbox", "/private-inbox", "/waha-lab", "/contacts", "/notifications", "/pipelines", "/agenda", "/erp", "/erp/avanzado"].includes(item.href)).map((item) => {
               const isActive =
                 pathname === item.href ||
-                (item.href !== "/dashboard" && item.href !== "/erp" && pathname.startsWith(item.href));
+                (item.href !== "/dashboard" && item.href !== "/erp" && item.href !== "/erp/administracion" && pathname.startsWith(item.href));
 
               const showUnreadDot =
                 item.href === "/inbox" && totalUnread > 0 && !isActive;
@@ -261,7 +263,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{item.href === "/waha-lab" ? "WAHA · Pruebas" : item.href === "/private-inbox" ? privateInboxName : item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : item.href === "/erp" ? "ERP · Ventas" : item.href === "/erp/administracion" ? "ERP · Administración" : t(item.labelKey as string)}</span>
+                    <span className="flex-1">{item.href === "/waha-lab" ? "WAHA · Pruebas" : item.href === "/private-inbox" ? privateInboxName : item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : item.href === "/erp" ? "ERP · Ventas" : item.href === "/erp/administracion" ? "ERP · Administración" : item.href === "/erp/avanzado" ? "ERP · Cartera y tareas" : item.href === "/erp/administracion/operaciones" ? "ERP · Gestión integral" : t(item.labelKey as string)}</span>
                     {item.beta && (
                       <span
                         aria-label={t("beta")}
