@@ -111,6 +111,9 @@ export default function WahaLab() {
   const [indexedChats, setIndexedChats] = useState<WaChat[]>([]);
   const indexInFlight = useRef(false);
   const [indexedCount, setIndexedCount] = useState(0);
+  const [indexComplete, setIndexComplete] = useState(false);
+  const [lastIndexAt, setLastIndexAt] = useState<string | null>(null);
+  const [indexPageSize, setIndexPageSize] = useState(200);
   const [indexError, setIndexError] = useState("");
   const [lists, setLists] = useState<WaLabel[]>([]);
   const [labelChats, setLabelChats] = useState<Record<string, WaChat[]>>({});
@@ -173,6 +176,7 @@ export default function WahaLab() {
     setListsLoading(true);
     setIndexError("");
     const collected = new Map<string, WaChat>();
+    let complete = false;
     try {
       let pageLimit = 200;
       for (let offset = 0; offset < 10000;) {
@@ -182,7 +186,11 @@ export default function WahaLab() {
         } catch (error) {
           // WEBJS can time out while building a large overview page. Retry
           // the same offset in smaller pages rather than abandoning import.
-          if (pageLimit === 200) { pageLimit = 100; continue; }
+          if (pageLimit > 25) {
+            pageLimit = Math.max(25, Math.floor(pageLimit / 2));
+            setIndexPageSize(pageLimit);
+            continue;
+          }
           throw error;
         }
         const page = normalizedList(result);
@@ -193,9 +201,18 @@ export default function WahaLab() {
           Array.isArray(packet.data) ? packet.data : [];
         const previousSize = collected.size;
         for (const chat of page) collected.set(chat.id, chat);
-        setIndexedChats([...collected.values()]);
+        // Preserve previously recovered chats while another scan is running.
+        // Partial/failed scans should never clear older results.
+        setIndexedChats(previous => {
+          const combined = new Map(previous.map(chat => [chat.id, chat]));
+          for (const chat of collected.values()) combined.set(chat.id, chat);
+          return [...combined.values()];
+        });
         setIndexedCount(collected.size);
-        if (rawRows.length < pageLimit) break;
+        if (rawRows.length < pageLimit) {
+          complete = true;
+          break;
+        }
         if (offset > 0 && collected.size === previousSize) {
           setIndexError("WAHA repitió la misma página. Podés reintentar la sincronización.");
           break;
@@ -205,6 +222,13 @@ export default function WahaLab() {
     } catch (err) {
       setIndexError(err instanceof Error ? err.message : "No se pudieron recuperar los chats anteriores");
     } finally {
+      if (complete) {
+        setIndexComplete(true);
+        setLastIndexAt(new Date().toISOString());
+        setIndexError("");
+      } else {
+        setIndexComplete(false);
+      }
       indexInFlight.current = false;
       setListsLoading(false);
     }
@@ -733,10 +757,24 @@ export default function WahaLab() {
                 </button>
               ))}
             </div>
-            {listsLoading && (
-              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <LoaderCircle className="size-3 animate-spin"/>
-                Cargando conversaciones: {indexedCount.toLocaleString("es-AR")} recuperadas...
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                {listsLoading && <LoaderCircle className="size-3 animate-spin"/>}
+                {listsLoading
+                  ? "Sincronizando: " + indexedCount.toLocaleString("es-AR") + " chats · lotes de " + indexPageSize
+                  : indexComplete
+                    ? "Chats recuperados: " + allChats.length.toLocaleString("es-AR")
+                    : "Chats recuperados hasta ahora: " + allChats.length.toLocaleString("es-AR")}
+              </span>
+              <button type="button" disabled={listsLoading || !connected}
+                onClick={() => void loadIndex()}
+                className="flex items-center gap-1 font-semibold text-primary disabled:opacity-40">
+                <RefreshCw className="size-3"/> Sincronizar todo
+              </button>
+            </div>
+            {!!lastIndexAt && !listsLoading && (
+              <p className="text-[10px] text-muted-foreground">
+                Última revisión completa: {new Date(lastIndexAt).toLocaleString("es-AR")}
               </p>
             )}
             {!!indexError && (
