@@ -69,6 +69,30 @@ export async function GET(request: Request) {
     return reply(await waha("/api/" + session + "/chats/overview?limit=" +
       limit + "&offset=" + offset));
   }
+  if (action === "chat-index") {
+    const limit = range(params.get("limit"), 200, 200);
+    const offset = range(params.get("offset"), 0, 50000);
+    return reply(await waha("/api/" + session + "/chats?limit=" + limit +
+      "&offset=" + offset + "&sortBy=messageTimestamp&sortOrder=desc"));
+  }
+  if (action === "labels") {
+    return reply(await waha("/api/" + session + "/labels"));
+  }
+  if (action === "label-chats") {
+    const labelId = params.get("labelId") || "";
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(labelId))
+      return NextResponse.json({ error: "Lista de WhatsApp inválida" }, { status: 400 });
+    return reply(await waha("/api/" + session + "/labels/" + encodeURIComponent(labelId) + "/chats"));
+  }
+  if (action === "overview-ids") {
+    const ids = (params.get("ids") || "").split(",").filter(Boolean);
+    if (!ids.length || ids.length > 100 || ids.some(id => !validChat(id)))
+      return NextResponse.json({ error: "Listado de chats inválido" }, { status: 400 });
+    return reply(await waha("/api/" + session + "/chats/overview", "POST", {
+      pagination: { limit: ids.length, offset: 0 },
+      filter: { ids }
+    }));
+  }
   if (action === "contacts") {
     const limit = range(params.get("limit"), 250, 500);
     const offset = range(params.get("offset"), 0, 10000);
@@ -160,6 +184,13 @@ export async function POST(request: Request) {
     return reply(await waha("/api/sessions/" + session + "/logout", "POST"));
   if (body.action === "stop")
     return reply(await waha("/api/sessions/" + session + "/stop", "POST"));
+  if (body.action === "archive" || body.action === "unarchive") {
+    const chatId = body.chatId || "";
+    if (!validChat(chatId))
+      return NextResponse.json({ error: "Conversación inválida" }, { status: 400 });
+    return reply(await waha("/api/" + session + "/chats/" +
+      encodeURIComponent(chatId) + "/" + body.action, "POST"));
+  }
   if (body.action === "send") {
     const chatId = body.chatId || "";
     const text = body.text?.trim() || "";
