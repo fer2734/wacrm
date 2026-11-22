@@ -421,9 +421,26 @@ export default function WahaLab() {
   }, [user, connected]);
 
   useEffect(() => {
-    if (!user) { setSnapshotReady(false); return; }
-    let cancelled = false;
+    if (snapshotSaveTimer.current) clearTimeout(snapshotSaveTimer.current);
+    snapshotSaveTimer.current = null;
+    pendingSnapshot.current = null;
     setSnapshotReady(false);
+    setSnapshotLoaded(false);
+    setIndexedChats([]);
+    setChats([]);
+    setLatestByChat({});
+    setContacts([]);
+    setLids([]);
+    setIndexComplete(false);
+    setLastIndexAt(null);
+    setNamesLastCheckedAt(null);
+    setCachedIdentity(null);
+    setVerifiedTotal(0);
+    latestCheckedAt.current.clear();
+    latestQueue.current = [];
+    latestPending.current.clear();
+    if (!user) return;
+    let cancelled = false;
     const db = createClient();
     void db.from("waha_lab_snapshots")
       .select("indexed_chats,previews,checked_times,last_full_scan,contacts,lids,names_checked_at,session_identity")
@@ -485,7 +502,8 @@ export default function WahaLab() {
   // Use the MOST RECENT state when the throttle fires, not an outdated
   // closure captured before the 555-chat scan completed.
   useEffect(() => {
-    if (!snapshotReady || !user || !connected || !indexedChats.length) return;
+    if (!snapshotReady || !user || !connected || !indexedChats.length ||
+        (cachedIdentity && status.me?.id && cachedIdentity !== status.me.id)) return;
     pendingSnapshot.current = {
       owner_user_id: user.id,
       session_identity: status.me?.id || cachedIdentity || null,
