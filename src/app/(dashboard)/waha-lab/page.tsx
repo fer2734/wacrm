@@ -467,6 +467,13 @@ export default function WahaLab() {
     } catch (e) { toast.error(e instanceof Error ? e.message : "No se envió el mensaje"); }
     finally { setBusy(false); }
   }
+  const chooseView = (next: string) => {
+    setView(next);
+    setLimit(80);
+  };
+  const customLists = lists.filter(label =>
+    label.isActive !== false && label.type !== 1 && label.type !== 2 &&
+    label.type !== 3 && label.id && label.name);
   const isMobileChat = !!active;
   if (loading || accountStatus === "loading")
     return <div className="p-4 text-sm text-muted-foreground">Abriendo prueba WAHA...</div>;
@@ -498,7 +505,7 @@ export default function WahaLab() {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" title="Actualizar" onClick={()=>{void getStatus();void loadChats();void loadMessages();}}
+          <button type="button" title="Actualizar" onClick={()=>{void getStatus();void loadChats();void loadMessages();void loadIndex();void loadLists();if(selectedLabelId)void loadLabelChats(selectedLabelId);}}
             className="grid size-9 place-items-center rounded-lg border border-border text-muted-foreground">
             <RefreshCw className="size-4"/></button>
           <button type="button" title="Administrar conexión WAHA"
@@ -639,20 +646,69 @@ export default function WahaLab() {
       <div className="flex min-h-0 flex-1">
         <aside className={(isMobileChat ? "hidden sm:flex " : "flex ") +
           "min-h-0 w-full shrink-0 flex-col border-r border-border bg-card sm:w-[325px] lg:w-[360px]"}>
-          <div className="shrink-0 space-y-2 border-b border-border p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold">Conversaciones WAHA</span>
-              <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{chats.length}{chats.length >= limit ? "+" : ""}</span>
+          <div className="shrink-0 space-y-2.5 border-b border-border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold">
+                {view === "archived" ? "Archivados" : "Conversaciones"}
+              </span>
+              <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+                {filtered.length.toLocaleString("es-AR")}
+              </span>
             </div>
             <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-2">
-              <Search className="size-4 text-muted-foreground"/>
+              <Search className="size-4 shrink-0 text-muted-foreground"/>
               <input value={query} onChange={e=>setQuery(e.target.value)}
-                placeholder="Buscar contactos" type="search"
+                placeholder={view === "archived" ? "Buscar en Archivados..." : "Buscar contactos..."}
+                type="search" aria-label="Buscar chats en la lista seleccionada"
                 className="h-9 min-w-0 flex-1 bg-transparent text-xs outline-none"/>
             </div>
+            {view === "archived" ? (
+              <button type="button" onClick={() => chooseView("all")}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-semibold text-primary hover:bg-primary/10">
+                <ArrowLeft className="size-4"/> Volver a conversaciones
+              </button>
+            ) : (
+              <button type="button" onClick={() => chooseView("archived")}
+                className="flex w-full items-center gap-2 rounded-lg border border-border/70 bg-background/40 px-3 py-2.5 text-left text-xs font-semibold text-foreground hover:bg-muted/70">
+                <Archive className="size-4 text-primary"/>
+                <span className="flex-1">Archivados</span>
+                <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                  {archivedCount.toLocaleString("es-AR")}
+                </span>
+                <ChevronDown className="-rotate-90 size-4 text-muted-foreground"/>
+              </button>
+            )}
+            <div className="private-wa-scroll flex items-center gap-1.5 overflow-x-auto pb-1" role="group" aria-label="Listas de WhatsApp">
+              {[
+                { id:"all", name:"Todos" },
+                { id:"unread", name:"No leídos" },
+                { id:"favorites", name:"Favoritos" },
+                { id:"groups", name:"Grupos" },
+                ...customLists.map(label => ({ id:"label:"+label.id, name:label.name }))
+              ].map(item => (
+                <button key={item.id} type="button" onClick={() => chooseView(item.id)}
+                  aria-pressed={view === item.id}
+                  className={"shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors " +
+                    (view === item.id ? "border-primary bg-primary/10 text-primary" :
+                      "border-border bg-card text-muted-foreground hover:bg-muted")}>
+                  {item.name}
+                </button>
+              ))}
+            </div>
+            {listsLoading && (
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <LoaderCircle className="size-3 animate-spin"/> Sincronizando listas y archivados...
+              </p>
+            )}
+            {!!listsError && (
+              <button type="button" onClick={() => {void loadIndex();void loadLists();}}
+                className="flex items-center gap-1 text-left text-[11px] text-amber-600 dark:text-amber-400">
+                <RefreshCw className="size-3"/> No se pudieron actualizar todas las listas. Reintentar.
+              </button>
+            )}
           </div>
           <div className="private-wa-scroll min-h-0 flex-1 overflow-y-auto">
-            {filtered.map(chat => {
+            {filtered.slice(0, limit).map(chat => {
               const title = displayName(chat);
               const phone = phoneOf(chat);
               const stage = stageOf(chat);
@@ -686,14 +742,19 @@ export default function WahaLab() {
                 </div>
               </button>;
             })}
-            {connected && chats.length >= limit &&
+            {connected && filtered.length > limit &&
               <button type="button" onClick={()=>setLimit(x=>x+80)}
-                className="flex w-full items-center justify-center gap-1 p-3 text-xs font-semibold text-primary">
-                <ChevronDown className="size-4"/> Cargar más conversaciones
+                className="flex w-full items-center justify-center gap-1 p-3 text-xs font-semibold text-primary hover:bg-primary/10">
+                <ChevronDown className="size-4"/> Cargar más ({filtered.length-limit})
               </button>}
-            {!chats.length && <p className="p-5 text-center text-xs text-muted-foreground">
-              {connected ? "WhatsApp está sincronizando chats o todavía no hay conversaciones." :
-                "Conectá WAHA para comparar los nombres y teléfonos."}
+            {!filtered.length && <p className="p-5 text-center text-xs text-muted-foreground">
+              {!connected ? "Conectá WAHA para ver tus conversaciones." :
+                listsLoading ? "Sincronizando listas de WhatsApp..." :
+                view === "archived" ? "No hay conversaciones archivadas en esta lista." :
+                view === "favorites" ? "No se encontraron chats favoritos sincronizados." :
+                view.startsWith("label:") ? "No hay chats en esta lista o WhatsApp no los sincronizó." :
+                query ? "No hay coincidencias en este filtro." :
+                "Todavía no hay conversaciones en este filtro."}
             </p>}
           </div>
         </aside>
@@ -731,6 +792,15 @@ export default function WahaLab() {
                   onClick={()=>void navigator.clipboard.writeText(phoneOf(active)).then(()=>toast.success("Número copiado"))}
                   className="grid size-9 place-items-center rounded-lg border border-border">
                   <Copy className="size-4"/>
+                </button>}
+                {connected && <button type="button"
+                  disabled={!!archivingId} onClick={()=>void toggleArchive(active)}
+                  title={archivedFlag(active) ? "Sacar de Archivados" : "Archivar conversación"}
+                  aria-label={archivedFlag(active) ? "Desarchivar conversación" : "Archivar conversación"}
+                  className="grid size-9 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-muted disabled:opacity-50">
+                  {archivingId === active.id ? <LoaderCircle className="size-4 animate-spin"/> :
+                    archivedFlag(active) ? <ArchiveRestore className="size-4"/> :
+                    <Archive className="size-4"/>}
                 </button>}
               </div>
               <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/60 pt-2">
