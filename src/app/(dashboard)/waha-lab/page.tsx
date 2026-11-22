@@ -14,6 +14,11 @@ type WaStatus = { status?: string; engine?: { engine?: string } | string; me?: {
   error?: string; message?: string };
 type WaMessage = { id: string; timestamp: number; fromMe?: boolean;
   body?: string; type?: string; hasMedia?: boolean };
+type LatestPreview = {
+  status: "verified" | "unavailable" | "failed";
+  message?: WaMessage;
+};
+type LatestPreviewEntry = { chatId: string; status: LatestPreview["status"]; message?: WaMessage };
 type WaChat = { id: string; name?: string; picture?: string | null;
   lastMessage?: WaMessage | null; unreadCount?: number;
   archived?: boolean; isArchived?: boolean; isFavorite?: boolean;
@@ -75,6 +80,32 @@ function ts(value: number | null | undefined): string {
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
   });
 }
+function chatClock(timestamp: number | undefined | null): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return "—";
+  const stamp = timestamp > 100000000000 ? timestamp : timestamp * 1000;
+  const date = new Date(stamp);
+  if (!Number.isFinite(date.getTime())) return "—";
+  const now = new Date();
+  if (date.toDateString() === now.toDateString())
+    return date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Ayer";
+  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+function previewText(message: WaMessage): string {
+  if (message.body?.trim()) return message.body.trim();
+  switch (message.type?.toLowerCase()) {
+    case "ptt": return "🎤 Mensaje de voz";
+    case "audio": return "🎵 Audio";
+    case "image": return "📷 Imagen";
+    case "video": return "🎥 Video";
+    case "document": return "📎 Documento";
+    case "sticker": return "Sticker";
+    case "location": return "📍 Ubicación";
+    case "contact": return "👤 Contacto";
+    default: return message.hasMedia ? "📎 Archivo multimedia" : "Mensaje sin texto";
+  }
+}
 function jidPhone(jid: string | undefined): string {
   if (!jid?.endsWith("@c.us")) return "";
   return "+" + jid.split("@")[0];
@@ -108,6 +139,14 @@ export default function WahaLab() {
   const [pairingError, setPairingError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [chats, setChats] = useState<WaChat[]>([]);
+  const [latestByChat, setLatestByChat] = useState<Record<string, LatestPreview>>({});
+  const [checkingLatest, setCheckingLatest] = useState(false);
+  const [verifiedTotal, setVerifiedTotal] = useState(0);
+  const latestQueue = useRef<string[]>([]);
+  const latestPending = useRef(new Set<string>());
+  const latestCheckedAt = useRef(new Map<string, number>());
+  const latestWorkerActive = useRef(false);
+  const stillConnected = useRef(false);
   const [indexedChats, setIndexedChats] = useState<WaChat[]>([]);
   const indexInFlight = useRef(false);
   const [indexedCount, setIndexedCount] = useState(0);
@@ -138,6 +177,7 @@ export default function WahaLab() {
   const [aliasDraft, setAliasDraft] = useState("");
   const [namesLoading, setNamesLoading] = useState(false);
   const connected = status.status === "WORKING";
+  stillConnected.current = connected;
   const qrReady = status.status === "SCAN_QR_CODE" || status.status === "SCAN_QR";
 
   const getStatus = useCallback(async () => {
@@ -265,6 +305,16 @@ export default function WahaLab() {
         encodeURIComponent(active.id) + "&limit=" + messageLimit);
       const rows: WaMessage[] = Array.isArray(result) ? result : result.messages || [];
       setMessages(rows.slice().sort((a,b) => (a.timestamp || 0)-(b.timestamp || 0)));
+      const mostRecent = rows.reduce<WaMessage | null>(
+        (best, msg) => Number(msg.timestamp) > Number(best?.timestamp || 0) ? msg : best,
+        null
+      );
+      if (mostRecent && Number.isFinite(Number(mostRecent.timestamp))) {
+        setLatestByChat(old => ({
+          ...old, [active.id]: { status: "verified", message: mostRecent }
+        }));
+        latestCheckedAt.current.set(active.id, Date.now());
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar los mensajes");
     }
@@ -418,12 +468,29 @@ export default function WahaLab() {
       (b.lastMessage?.timestamp || 0) - (a.lastMessage?.timestamp || 0));
   }, [chats, indexedChats, labelChats, selectedLabelId]);
 
-  const archivedCount = allChats.filter(archivedFlag).length;
+  // A WAHA overview sometimes provides empty/stale lastMessage fields.
+  // Until a message was checked via /chats/:id/messages, do not invent a
+  // preview or show the stale timestamp as a reliable chat-list date.
+  const verifiedChats = useMemo(() => allChats.map(chat => {
+    const resolved = latestByChat[chat.id];
+    return {
+      ...chat,
+      lastMessage: resolved?.status === "verified" && resolved.message
+        ? resolved.message : null
+    };
+  }).sort((a,b) => {
+    const one = a.lastMessage?.timestamp || 0;
+    const two = b.lastMessage?.timestamp || 0;
+    const sec = (value:number) => value > 1e12 ? value / 1000 : value;
+    return sec(two) - sec(one);
+  }), [allChats, latestByChat]);
+
+  const archivedCount = verifiedChats.filter(archivedFlag).length;
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("es-AR");
     const memberIds = selectedLabelId
       ? new Set((labelChats[selectedLabelId] || []).map(c => c.id)) : null;
-    return allChats.filter(chat => {
+    return verifiedChats.filter(chat => {
       const archived = archivedFlag(chat);
       if (view === "archived" ? !archived : archived) return false;
       if (view === "unread" && (chat.unreadCount || chat._chat?.unreadCount || 0) <= 0) return false;
@@ -435,7 +502,89 @@ export default function WahaLab() {
       return !term || (displayName(chat) + " " + phoneOf(chat) + " " +
         chat.id).toLocaleLowerCase("es-AR").includes(term);
     });
-  }, [allChats, view, query, contacts, lids, settings, selectedLabelId, labelChats]);
+  }, [verifiedChats, view, query, contacts, lids, settings, selectedLabelId, labelChats]);
+  const verifyLatest = useCallback(async () => {
+    if (latestWorkerActive.current || !stillConnected.current) return;
+    latestWorkerActive.current = true;
+    setCheckingLatest(true);
+    try {
+      while (latestQueue.current.length > 0 && stillConnected.current) {
+        const ids = latestQueue.current.splice(0, 6);
+        const resultAt = Date.now();
+        try {
+          const response = await action("latest-previews", { chatIds: ids });
+          const returned: LatestPreviewEntry[] =
+            Array.isArray(response.entries) ? response.entries : [];
+          const byId = new Map(returned.map(item => [item.chatId, item]));
+          setLatestByChat(old => {
+            const next = { ...old };
+            for (const id of ids) {
+              const entry = byId.get(id);
+              next[id] = entry?.status === "verified" && entry.message
+                ? { status: "verified", message: entry.message }
+                : { status: entry?.status === "unavailable" ? "unavailable" : "failed" };
+            }
+            return next;
+          });
+        } catch {
+          // A failed network request must never replace a known-good preview.
+          setLatestByChat(old => {
+            const next = { ...old };
+            for (const id of ids) {
+              if (next[id]?.status !== "verified") next[id] = { status: "failed" };
+            }
+            return next;
+          });
+        } finally {
+          for (const id of ids) {
+            latestCheckedAt.current.set(id, resultAt);
+            latestPending.current.delete(id);
+          }
+          setVerifiedTotal(latestCheckedAt.current.size);
+        }
+        // Bound the pressure on WhatsApp Web's Chromium session.
+        await new Promise(resolve => window.setTimeout(resolve, 400));
+      }
+    } finally {
+      latestWorkerActive.current = false;
+      setCheckingLatest(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!connected || !allChats.length) return;
+    const now = Date.now();
+    // Verify active chats first, then archived ones. The newest 30 receive
+    // periodic rechecks; older history is checked once unless manually retried.
+    const priority = [
+      ...allChats.filter(chat => !archivedFlag(chat)),
+      ...allChats.filter(archivedFlag)
+    ];
+    let index = 0;
+    for (const chat of priority) {
+      const last = latestCheckedAt.current.get(chat.id) || 0;
+      const needsCheck = !last || (index < 30 && now - last > 120000);
+      if (needsCheck && !latestPending.current.has(chat.id)) {
+        latestQueue.current.push(chat.id);
+        latestPending.current.add(chat.id);
+      }
+      index++;
+    }
+    void verifyLatest();
+  }, [connected, allChats, verifyLatest]);
+
+  function refreshVerifiedPreviews() {
+    latestQueue.current = [];
+    latestPending.current.clear();
+    latestCheckedAt.current.clear();
+    setLatestByChat({});
+    setVerifiedTotal(0);
+    // New scans trigger the queue effect, and the manual refresh also
+    // requests a fresh snapshot to discover recent messages immediately.
+    void loadChats();
+    void loadIndex();
+  }
+
   async function requestPairingCode() {
     if (busy || connected) return;
     const phone = pairPhone.replace(/[^0-9]/g, "");
@@ -772,6 +921,17 @@ export default function WahaLab() {
                 <RefreshCw className="size-3"/> Sincronizar todo
               </button>
             </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                {checkingLatest && <LoaderCircle className="size-3 animate-spin" />}
+                Últimos mensajes verificados: {verifiedTotal.toLocaleString("es-AR")} / {allChats.length.toLocaleString("es-AR")}
+              </span>
+              <button type="button" disabled={!connected}
+                onClick={() => refreshVerifiedPreviews()}
+                className="flex items-center gap-1 font-semibold text-primary disabled:opacity-40">
+                <RefreshCw className="size-3" /> Actualizar mensajes
+              </button>
+            </div>
             {!!lastIndexAt && !listsLoading && (
               <p className="text-[10px] text-muted-foreground">
                 Última revisión completa: {new Date(lastIndexAt).toLocaleString("es-AR")}
@@ -805,7 +965,7 @@ export default function WahaLab() {
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-[13px] font-semibold">{title}</p>
                       <span className="shrink-0 text-[10px] text-muted-foreground">
-                        {ts(chat.lastMessage?.timestamp)}
+                        {chatClock(chat.lastMessage?.timestamp)}
                       </span>
                     </div>
                     <p className="truncate text-[11px] text-muted-foreground">
@@ -813,7 +973,13 @@ export default function WahaLab() {
                     </p>
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                        {chat.lastMessage?.body || "Sin vista previa"}
+                        {latestByChat[chat.id]?.status === "verified" && chat.lastMessage
+                          ? previewText(chat.lastMessage)
+                          : latestByChat[chat.id]?.status === "unavailable"
+                            ? "WhatsApp Web no entregó mensajes de este chat"
+                            : latestByChat[chat.id]?.status === "failed"
+                              ? "No se pudo verificar el último mensaje"
+                              : "Verificando último mensaje..."}
                       </span>
                       {stage && <span className="max-w-28 shrink-0 truncate rounded-md border border-border px-1.5 py-0.5 text-[10px] font-semibold"
                         style={{ borderColor: (stage.color||"#64748b")+"66",
@@ -898,7 +1064,7 @@ export default function WahaLab() {
                   </select>
                 </label>
                 <span className="text-[11px] text-muted-foreground">
-                  Último: {ts(active.lastMessage?.timestamp)}
+                  Último: {chatClock(latestByChat[active.id]?.message?.timestamp)}
                 </span>
               </div>
             </div>
