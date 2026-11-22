@@ -211,6 +211,7 @@ export default function WahaLab() {
   const [limit, setLimit] = useState(80);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState<WaChat | null>(null);
+  const openedChatFromList = useRef(false);
   const [messages, setMessages] = useState<WaMessage[]>([]);
   const [messageLimit, setMessageLimit] = useState(80);
   const [draft, setDraft] = useState("");
@@ -538,6 +539,29 @@ export default function WahaLab() {
     return sec(tB) - sec(tA);
   }), [allChats, latestByChat]);
 
+  useEffect(() => {
+    const syncChatFromBrowserHistory = () => {
+      const prefix = "#waha-chat=";
+      if (!window.location.hash.startsWith(prefix)) {
+        openedChatFromList.current = false;
+        setActive(null);
+        return;
+      }
+      const encoded = window.location.hash.slice(prefix.length);
+      let jid = "";
+      try { jid = decodeURIComponent(encoded); } catch { return; }
+      const found = allChats.find(row => row.id === jid);
+      if (found) setActive(previous => previous?.id === found.id ? previous : found);
+    };
+    syncChatFromBrowserHistory();
+    window.addEventListener("popstate", syncChatFromBrowserHistory);
+    window.addEventListener("hashchange", syncChatFromBrowserHistory);
+    return () => {
+      window.removeEventListener("popstate", syncChatFromBrowserHistory);
+      window.removeEventListener("hashchange", syncChatFromBrowserHistory);
+    };
+  }, [allChats]);
+
   const archivedCount = verifiedChats.filter(archivedFlag).length;
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase("es-AR");
@@ -637,6 +661,35 @@ export default function WahaLab() {
     // requests a fresh snapshot to discover recent messages immediately.
     void loadChats();
     void loadIndex();
+  }
+
+  function openChat(chat: WaChat) {
+    const fragment = "#waha-chat=" + encodeURIComponent(chat.id);
+    if (!window.location.hash.startsWith("#waha-chat=")) {
+      // A real browser history entry makes Android Back return to this
+      // inbox's chat list instead of leaving for the previous CRM page.
+      window.history.pushState({ wahaChat: chat.id }, "", fragment);
+      openedChatFromList.current = true;
+    } else {
+      window.history.replaceState({ wahaChat: chat.id }, "", fragment);
+    }
+    setActive(chat);
+    setMessages([]);
+    setMessageLimit(80);
+    setAliasEdit(false);
+  }
+  function closeChat() {
+    if (window.location.hash.startsWith("#waha-chat=")) {
+      if (openedChatFromList.current) {
+        window.history.back();
+      } else {
+        window.history.replaceState(window.history.state, "",
+          window.location.pathname + window.location.search);
+        setActive(null);
+      }
+    } else {
+      setActive(null);
+    }
   }
 
   async function requestPairingCode() {
@@ -1073,7 +1126,7 @@ export default function WahaLab() {
             <div className="shrink-0 border-b border-border bg-card px-3 py-2">
               <div className="flex items-center gap-2">
                 <button type="button" title="Volver" aria-label="Volver"
-                  onClick={()=>setActive(null)} className="grid size-9 place-items-center sm:hidden">
+                  onClick={()=>closeChat()} className="grid size-9 place-items-center sm:hidden">
                   <ArrowLeft className="size-5"/>
                 </button>
                 <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
