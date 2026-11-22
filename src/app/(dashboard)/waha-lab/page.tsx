@@ -186,9 +186,11 @@ export default function WahaLab() {
           throw error;
         }
         const page = normalizedList(result);
+        const packet = result && typeof result === "object"
+          ? result as Record<string, unknown> : {};
         const rawRows: unknown[] = Array.isArray(result) ? result :
-          result && Array.isArray(result.chats) ? result.chats :
-          result && Array.isArray(result.data) ? result.data : [];
+          Array.isArray(packet.chats) ? packet.chats :
+          Array.isArray(packet.data) ? packet.data : [];
         const previousSize = collected.size;
         for (const chat of page) collected.set(chat.id, chat);
         setIndexedChats([...collected.values()]);
