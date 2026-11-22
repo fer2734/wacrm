@@ -74,7 +74,7 @@ export async function middleware(request: NextRequest) {
 
   // Agents use the shared inbox. Workspace setup belongs to administrators.
   if (user && !pathname.startsWith('/api/') &&
-      ['/dashboard', '/broadcasts', '/automations', '/flows', '/agents', '/settings'].some(path => pathname === path || pathname.startsWith(`${path}/`))) {
+      (pathname.startsWith('/erp/administracion') || ['/dashboard', '/broadcasts', '/automations', '/flows', '/agents', '/settings'].some(path => pathname === path || pathname.startsWith(`${path}/`)))) {
     const { data: profile } = await supabase.from('profiles')
       .select('account_role').eq('user_id', user.id).maybeSingle()
     if (profile?.account_role === 'agent') {
@@ -83,7 +83,7 @@ export async function middleware(request: NextRequest) {
         personalSettings.includes(request.nextUrl.searchParams.get('tab') ?? '')
       if (!allowedSettings) {
         const url = request.nextUrl.clone()
-        url.pathname = pathname === '/settings' ? '/settings' : '/agenda'
+        url.pathname = pathname === '/settings' ? '/settings' : pathname.startsWith('/erp/administracion') ? '/erp' : '/agenda'
         url.search = pathname === '/settings' ? '?tab=profile' : ''
         return withRefreshedCookies(NextResponse.redirect(url))
       }
@@ -120,7 +120,7 @@ export async function middleware(request: NextRequest) {
   // Protected pages - redirect to login if not authenticated
   // Every top-level route under src/app/(dashboard)/ belongs here —
   // middleware.test.ts reads that directory and fails on a missing one.
-  const protectedPaths = ['/agenda', '/dashboard', '/inbox', '/private-inbox', '/waha-lab', '/contacts', '/pipelines', '/broadcasts', '/automations', '/flows', '/agents', '/notifications', '/settings']
+  const protectedPaths = ['/agenda', '/dashboard', '/inbox', '/private-inbox', '/waha-lab', '/contacts', '/pipelines', '/erp', '/broadcasts', '/automations', '/flows', '/agents', '/notifications', '/settings']
   if (!user && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
