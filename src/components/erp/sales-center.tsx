@@ -6,6 +6,9 @@ import { CalendarClock, CheckCircle2, ClipboardList, CreditCard, FileSignature, 
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
+import { sections } from "@/lib/erp/application-fields";
+import { CompleteSaleEditor } from "@/components/erp/complete-sale-editor";
+import { ContractManager } from "@/components/erp/contract-manager";
 
 type Role = "propietario" | "administracion" | "vendedor" | "consulta";
 type Customer = { id:string; agent_id:string; full_name:string; document_number:string|null; phone:string; email:string|null; address:string|null; city:string|null; province:string|null; notes:string|null; crm_contact_id:string|null; created_at:string };
@@ -19,38 +22,6 @@ type Person = { user_id:string; full_name:string|null; email:string };
 type DB = { customers:Customer[]; sales:Sale[]; installments:Installment[]; payments:Payment[]; documents:Document[]; followups:Followup[]; applications:Application[]; people:Person[] };
 const empty:DB={customers:[],sales:[],installments:[],payments:[],documents:[],followups:[],applications:[],people:[]};
 type Section = "resumen"|"solicitud"|"contrato"|"pagos"|"seguimiento";
-type Field = { key:string; label:string; type?:string; wide?:boolean; options?:string[] };
-const sections: {title:string;fields:Field[]}[]=[
- {title:"Datos de la solicitud",fields:[
-  {key:"contract_number",label:"Contrato N.º"},{key:"receipt_number",label:"Recibo o factura N.º"},
-  {key:"administration_delivery",label:"Fecha de entrega a Administración",type:"date"},
-  {key:"management_delivery",label:"Fecha de entrega a Gerencia",type:"date"}]},
- {title:"Características del plan",fields:[
-  {key:"vehicle_category",label:"Unidad",options:["Auto 0 km","Auto usado","Camioneta 0 km","Camioneta usada","Moto 0 km","Moto usada"]},
-  {key:"brand",label:"Marca"},{key:"model",label:"Modelo"},{key:"model_year",label:"Año",type:"number"},
-  {key:"agreed_delivery",label:"Entrega pactada",wide:true},
-  {key:"trade_in",label:"¿Entrega unidad usada?",options:["No","Sí"]},
-  {key:"trade_brand",label:"Marca de la unidad entregada"},{key:"trade_model",label:"Modelo de la unidad entregada"},
-  {key:"trade_year",label:"Año de la unidad entregada"},{key:"trade_km",label:"Kilómetros",type:"number"},
-  {key:"observations",label:"Observaciones",wide:true}]},
- {title:"Persona física / jurídica",fields:[
-  {key:"full_name",label:"Nombre y apellido / Razón social",wide:true},
-  {key:"dni",label:"D.N.I."},{key:"cuil",label:"CUIL / CUIT"},
-  {key:"birth_date",label:"Fecha de nacimiento",type:"date"},{key:"nationality",label:"Nacionalidad"},
-  {key:"address",label:"Domicilio"},{key:"postal_code",label:"Código postal"},
-  {key:"province",label:"Provincia"},{key:"city",label:"Localidad"},
-  {key:"marital_status",label:"Estado civil",options:["","Soltero/a","Casado/a","Conviviente","Divorciado/a","Viudo/a"]},
-  {key:"email",label:"Correo electrónico",type:"email"},
-  {key:"phone",label:"Teléfono particular",type:"tel"},{key:"additional_phone",label:"Teléfono adicional",type:"tel"},
-  {key:"spouse_name",label:"Nombre del cónyuge"},{key:"spouse_cuil",label:"CUIL del cónyuge"},
-  {key:"spouse_birth",label:"Fecha de nacimiento del cónyuge",type:"date"},{key:"spouse_nationality",label:"Nacionalidad del cónyuge"}]},
- {title:"Datos laborales",fields:[
-  {key:"occupation",label:"Actividad laboral",wide:true},
-  {key:"employer",label:"Empresa / lugar de empleo",wide:true},
-  {key:"net_income",label:"Ingresos netos ($)",type:"number"},{key:"seniority",label:"Antigüedad"},
-  {key:"work_address",label:"Domicilio laboral",wide:true},
-  {key:"salesperson",label:"Nombre del vendedor",wide:true}]}
-];
 const input="min-h-10 w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15";
 const label="block min-w-0 space-y-1.5 text-xs font-semibold text-muted-foreground";
 const button="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition-opacity disabled:opacity-50";
@@ -105,6 +76,9 @@ export function SalesCenter(){
  const [search,setSearch]=useState("");
  const [creatingCustomer,setCreatingCustomer]=useState(false);
  const [newSale,setNewSale]=useState(false);
+ const [newSaleCustomerId,setNewSaleCustomerId]=useState<string|null>(null);
+ const [editingSale,setEditingSale]=useState(false);
+ const [dniFile,setDniFile]=useState<File|null>(null);
  const [entryDate,setEntryDate]=useState(localDate());
  const [secondDue,setSecondDue]=useState(addMonth(localDate()));
  const [paymentInstallment,setPaymentInstallment]=useState("");
@@ -122,6 +96,7 @@ export function SalesCenter(){
    db.from("profiles").select("user_id,full_name,email").eq("account_id",account).then(r=>{if(r.error)throw r.error;return (r.data??[]) as Person[]})
   ]);
   setData({customers,sales,installments,payments,documents,followups,applications,people});
+  return {customers,sales};
  },[]);
  useEffect(()=>{
   if(!user||!accountId||profileLoading)return;
@@ -142,7 +117,7 @@ export function SalesCenter(){
  const documents=data.documents.filter(x=>x.sale_id===sale?.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
  const followups=data.followups.filter(x=>x.sale_id===sale?.id).sort((a,b)=>b.created_at.localeCompare(a.created_at));
  const application=data.applications.find(x=>x.sale_id===sale?.id)?.data||{};
- useEffect(()=>{setContractFile(null);setPaymentFile(null);setProofFile(null);setPaymentInstallment("");setProofPayment("");},[sale?.id]);
+ useEffect(()=>{setContractFile(null);setPaymentFile(null);setProofFile(null);setDniFile(null);setPaymentInstallment("");setProofPayment("");},[sale?.id]);
  const person=(id:string)=>data.people.find(x=>x.user_id===id)?.full_name||"Asesor";
  const paid=(id:string)=>payments.filter(p=>p.installment_id===id&&p.status==="confirmado").reduce((a,p)=>a+Number(p.amount),0);
  const documentsFor=(kind:string)=>documents.filter(x=>x.kind===kind);
@@ -163,46 +138,19 @@ export function SalesCenter(){
    if(error)throw error;setCustomerId(r.id);setSaleId("");setCreatingCustomer(false);setNewSale(true);form.reset();
   },"Cliente incorporado a la cartera");
  }
- async function createSale(e:FormEvent<HTMLFormElement>){
-  e.preventDefault();if(!customer)return;const form=e.currentTarget;const f=new FormData(form);
-  if(secondDue<entryDate){toast.error("La cuota 2 no puede vencer antes del ingreso");return}
-  await transact(async()=>{
-   const {data:id,error}=await createClient().rpc("erp_create_sale",{p_account:accountId,p_customer:customer.id,p_values:{
-    agent_id:customer.agent_id,vehicle_description:val(f.get("vehicle_description")),vehicle_type:val(f.get("vehicle_type")),
-    operation_type:val(f.get("operation_type")),price:num(f.get("price")),initial_amount:0,admin_fee:num(f.get("admin_fee")),
-    installment_amount:num(f.get("installment_amount")),installment_count:num(f.get("installment_count")),
-    first_due:entryDate,entry_date:entryDate,second_due_date:secondDue,
-    delivery_target_installment:4,notes:val(f.get("notes"))
-   }});
-   if(error)throw error;setSaleId(String(id));setSection("solicitud");setNewSale(false);
-  },"Venta y cronograma de cuotas creados");
- }
- async function saveApplication(e:FormEvent<HTMLFormElement>){
-  e.preventDefault();if(!sale||!customer)return;const f=new FormData(e.currentTarget);
-  const fields:Record<string,string>={};for(const g of sections)for(const item of g.fields)fields[item.key]=val(f.get(item.key));
-  if(!fields.full_name||!fields.phone){toast.error("El nombre y el teléfono son obligatorios");return}
-  await transact(async()=>{
-   const db=createClient();
-   const {error:cError}=await db.from("erp_customers").update({
-    full_name:fields.full_name,phone:fields.phone,document_number:fields.dni||null,
-    email:fields.email||null,address:fields.address||null,city:fields.city||null,
-    province:fields.province||null,updated_at:new Date().toISOString()
-   }).eq("id",customer.id);
-   if(cError)throw cError;
-   const {error}=await db.from("erp_sale_applications").upsert({account_id:accountId,sale_id:sale.id,data:fields,updated_by:user!.id,updated_at:new Date().toISOString()},{onConflict:"sale_id"});
-   if(error)throw error;
-  },"Solicitud de adhesión guardada");
- }
  async function upload(file:File,kind:string,paymentId:string|null=null){
-  if(!sale||!accountId||!user)throw new Error("Primero seleccioná una operación");
-  if(!["application/pdf","image/jpeg","image/png","image/webp"].includes(file.type)||file.size<1||file.size>10485760)throw new Error("Admitimos PDF, JPG, PNG o WEBP hasta 10 MB");
-  const safe=file.name.replace(/[^\w.\-]/g,"_").slice(-90);
-  const path=accountId+"/"+sale.id+"/"+crypto.randomUUID()+"-"+safe;
-  const db=createClient();const store=db.storage.from("erp-comprobantes");
-  const {error:uploadError}=await store.upload(path,file,{contentType:file.type,upsert:false});
-  if(uploadError)throw uploadError;
-  const {error}=await db.from("erp_documents").insert({account_id:accountId,sale_id:sale.id,payment_id:paymentId,kind,file_name:file.name,object_path:path,mime_type:file.type,file_size:file.size,created_by:user.id});
-  if(error){await store.remove([path]);throw error}
+  if(!sale)throw new Error("Primero seleccioná una operación");
+  const body=new FormData();
+  body.set("sale_id",sale.id);body.set("kind",kind);body.set("file",file);
+  if(paymentId)body.set("payment_id",paymentId);
+  const response=await fetch("/api/erp/files",{method:"POST",body});
+  const result=await response.json().catch(()=>({error:"No se pudo leer la respuesta del servidor"}));
+  if(!response.ok||!result.ok)throw new Error(result.error||"No se pudo subir el archivo");
+ }
+ async function addDni(e:FormEvent<HTMLFormElement>){
+  e.preventDefault();if(!dniFile)return toast.error("Seleccioná una imagen o PDF del DNI");
+  const form=e.currentTarget;
+  await transact(async()=>{await upload(dniFile,"dni");setDniFile(null);form.reset()},"DNI adjuntado al legajo");
  }
  async function addContract(e:FormEvent<HTMLFormElement>){
   e.preventDefault();if(!contractFile)return toast.error("Seleccioná un contrato firmado");
@@ -244,9 +192,6 @@ export function SalesCenter(){
    if(error)throw error;form.reset();
   },"Seguimiento registrado");
  }
- async function changeStage(stage:string){
-  if(!sale)return;await transact(async()=>{const {error}=await createClient().rpc("erp_change_stage",{p_sale:sale.id,p_stage:stage});if(error)throw error},"Estado de venta actualizado");
- }
  async function openDocument(doc:Document){
   const popup=window.open("","_blank");
   try{const {data:r,error}=await createClient().storage.from("erp-comprobantes").createSignedUrl(doc.object_path,120);
@@ -267,14 +212,23 @@ export function SalesCenter(){
     <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Ventas y cartera de clientes</h1>
     <p className="mt-1 text-xs text-muted-foreground">Todo el legajo de cada cliente, sus contratos, cuotas y seguimiento en un solo lugar.</p>
    </div>
-   <div className="flex flex-wrap gap-2"><button className={ghost} onClick={()=>void refresh().catch(e=>toast.error(errorText(e)))}><RefreshCw size={14}/> Actualizar</button>
+   <div className="flex flex-wrap gap-2"><button className={button} onClick={()=>{setNewSaleCustomerId(null);setNewSale(true);setEditingSale(false)}}><Plus size={16}/> Registrar venta</button><button className={ghost} onClick={()=>void refresh().catch(e=>toast.error(errorText(e)))}><RefreshCw size={14}/> Actualizar</button>
     {admin&&<Link href="/erp/administracion" className={ghost}>Administración</Link>}</div>
   </header>
+  {(newSale||editingSale)&&accountId&&user?
+   <CompleteSaleEditor key={editingSale?"edit-"+sale?.id:"new-"+(newSaleCustomerId||"none")}
+    accountId={accountId} userId={user.id} admin={admin} customers={data.customers}
+    selectedCustomer={editingSale?customer:(data.customers.find(c=>c.id===newSaleCustomerId)||null)} sale={editingSale?sale:null} application={editingSale?application:{}}
+    people={data.people} onCancel={()=>{setNewSale(false);setEditingSale(false)}}
+    onSaved={async(id)=>{const updated=await load(accountId);const added=updated.sales.find(x=>x.id===id);
+     if(added){setCustomerId(added.customer_id);setSaleId(added.id)}
+     setNewSale(false);setEditingSale(false);setSection("contrato");}}
+   />:
   <div className="grid min-w-0 gap-4 lg:grid-cols-[310px_minmax(0,1fr)]">
    <aside className="min-w-0 rounded-2xl border border-border bg-card p-3 shadow-sm lg:sticky lg:top-3 lg:h-[calc(100vh-7rem)]">
     <div className="mb-3 flex items-center justify-between gap-2 px-1">
      <div><p className="text-sm font-extrabold">Clientes</p><p className="text-[11px] text-muted-foreground">{data.customers.length} en la cartera</p></div>
-     <button className={ghost} title="Agregar cliente" onClick={()=>setCreatingCustomer(x=>!x)}><Plus size={15}/> Nuevo</button>
+     <button className={ghost} title="Registrar venta" onClick={()=>{setNewSaleCustomerId(null);setNewSale(true);setEditingSale(false)}}><Plus size={15}/> Venta</button>
     </div>
     <div className="relative mb-3"><Search size={15} className="absolute left-3 top-3 text-muted-foreground"/><input className={input+" pl-9"} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar nombre, DNI, teléfono…" aria-label="Buscar clientes"/></div>
     {creatingCustomer&&<form className="mb-3 space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3" onSubmit={createCustomer}>
@@ -289,7 +243,7 @@ export function SalesCenter(){
     </form>}
     <div className="crm-scrollbar max-h-[45vh] space-y-1.5 overflow-y-auto pr-1 lg:max-h-[calc(100vh-18rem)]">
      {filtered.map(c=>{const count=data.sales.filter(s=>s.customer_id===c.id).length;const active=customer?.id===c.id;
-      return <button key={c.id} className={"w-full rounded-xl border px-3 py-3 text-left transition-colors "+(active?"border-primary/50 bg-primary/10":"border-transparent bg-muted/25 hover:border-border hover:bg-muted/60")} onClick={()=>{setCustomerId(c.id);setSaleId("");setSection("resumen");setNewSale(false)}}>
+      return <button key={c.id} className={"w-full rounded-xl border px-3 py-3 text-left transition-colors "+(active?"border-primary/50 bg-primary/10":"border-transparent bg-muted/25 hover:border-border hover:bg-muted/60")} onClick={()=>{setCustomerId(c.id);setSaleId("");setSection("resumen");setNewSale(false);setEditingSale(false)}}>
        <div className="flex items-center gap-2"><div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><UserRound size={17}/></div>
         <div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold">{c.full_name}</p><p className="truncate text-[11px] text-muted-foreground">{c.phone}{c.city?" · "+c.city:""}</p></div>
         {count>0&&<span className="rounded-md bg-background px-1.5 py-1 text-[10px] font-bold">{count}</span>}
@@ -304,25 +258,10 @@ export function SalesCenter(){
       <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0">
        <p className="text-xs font-bold uppercase tracking-wider text-primary">Legajo comercial</p><h2 className="mt-1 text-xl font-black">{customer.full_name}</h2>
        <p className="mt-1 text-xs text-muted-foreground">{customer.phone} · {customer.document_number||"DNI sin cargar"} · Asesor: {person(customer.agent_id)}</p>
-      </div><button className={ghost} onClick={()=>{setNewSale(x=>!x);setSection("resumen")}}><Plus size={14}/> Nueva operación</button></div>
+      </div><button className={ghost} onClick={()=>{setNewSaleCustomerId(customer.id);setNewSale(true);setEditingSale(false);setSection("resumen")}}><Plus size={14}/> Nueva operación</button></div>
       {clientSales.length>0&&<div className="mt-3 flex flex-wrap gap-2">{clientSales.map(s=><button key={s.id} onClick={()=>{setSaleId(s.id);setSection("resumen");setNewSale(false)}} className={"rounded-lg border px-3 py-2 text-xs font-semibold "+(sale?.id===s.id?"border-primary bg-primary/10 text-primary":"border-border hover:bg-muted")}>{s.vehicle_description}</button>)}</div>}
      </div>
-     {(newSale||!sale)&&<Panel title="Crear una operación para este cliente" icon={<Plus size={18} className="text-primary"/>}>
-      <form onSubmit={createSale} className="grid grid-cols-2 gap-3">
-       <label className={label+" col-span-2"}>Vehículo de interés *<input className={input} name="vehicle_description" placeholder="Ej.: Toyota Hilux SRX 2025" required minLength={2}/></label>
-       <label className={label}>Tipo<select className={input} name="vehicle_type"><option value="auto">Auto</option><option value="camioneta">Camioneta</option><option value="moto">Moto</option><option value="otro">Otro</option></select></label>
-       <label className={label}>Modalidad<select className={input} name="operation_type"><option value="financiacion">Financiación</option><option value="directa">Venta directa</option></select></label>
-       <label className={label}>Valor de referencia ($)<input className={input} type="number" name="price" min="0" step="0.01" defaultValue="0"/></label>
-       <label className={label}>Cuota mensual elegida ($) *<input className={input} type="number" name="installment_amount" min="1" step="0.01" defaultValue="500000" required/></label>
-       <label className={label}>Gastos administrativos ($)<input className={input} type="number" name="admin_fee" min="0" step="0.01" defaultValue="0"/></label>
-       <label className={label}>Cuotas iniciales a generar<input className={input} type="number" name="installment_count" min="1" max="240" defaultValue="15"/></label>
-       <label className={label}>Fecha de ingreso al sistema<input className={input} type="date" name="entry_date" value={entryDate} onChange={e=>{setEntryDate(e.target.value);setSecondDue(addMonth(e.target.value))}} required/></label>
-       <label className={label}>Vencimiento de la cuota 2<input className={input} type="date" name="second_due_date" value={secondDue} min={entryDate} onChange={e=>setSecondDue(e.target.value)} required/></label>
-       <label className={label+" col-span-2"}>Observaciones<textarea className={input} name="notes" rows={2}/></label>
-       <p className="col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground"><b className="text-foreground">Cuota 1 = cuota elegida + gastos administrativos.</b> Se generan inicialmente 15 cuotas por defecto y pueden agregarse cuotas sucesivas cuando sea necesario, sin detenerse en la cuarta.</p>
-       <div className="col-span-2"><Submit busy={busy}>Crear venta y sus cuotas</Submit></div>
-      </form>
-     </Panel>}
+     {!sale&&<Panel title="Sin ventas registradas">Seleccioná «Registrar venta» para completar la solicitud de adhesión y crear la operación de una sola vez.</Panel>}
      {sale&&!newSale&&<>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
        {[["Cuota elegida",money(sale.installment_amount)],["Gastos administrativos",money(sale.admin_fee)],["Cuota 1 total",money(Number(sale.installment_amount)+Number(sale.admin_fee))],["Próximo vencimiento",fmtDate(installments.find(i=>paid(i.id)<Number(i.amount))?.due_date||null)]].map(([k,v])=><div key={k} className="rounded-xl border border-border bg-card p-3"><p className="text-[11px] text-muted-foreground">{k}</p><p className="mt-1 break-words text-sm font-black">{v}</p></div>)}
@@ -336,33 +275,27 @@ export function SalesCenter(){
          ["Vehículo",sale.vehicle_description],["Modalidad",sale.operation_type],["Fecha de ingreso",fmtDate(sale.entry_date||sale.first_due)],["Cuota 2",fmtDate(sale.second_due_date||installments[1]?.due_date||null)],
          ["Cuotas registradas",String(installments.length)],["Entrega de referencia","Desde cuota "+sale.delivery_target_installment+" (sujeta a condiciones)"]
         ].map(([k,v])=><div key={k}><dt className="text-[11px] text-muted-foreground">{k}</dt><dd className="mt-1 font-semibold">{v}</dd></div>)}</dl>
-        <label className={label+" mt-4"}>Estado de la venta<select className={input} value={sale.stage} onChange={e=>void changeStage(e.target.value)} disabled={busy}>
-         {["nuevo","contactado","interesado","documentacion","pactado","activo","no_interesado","caido"].filter(s=>s===sale.stage||!["entrega_en_gestion","entregado"].includes(s)).map(s=><option key={s} value={s}>{s.replaceAll("_"," ")}</option>)}
-         {["entrega_en_gestion","entregado"].includes(sale.stage)&&<option value={sale.stage}>{sale.stage.replaceAll("_"," ")}</option>}
-        </select></label>
+        {admin&&<button className={ghost+" mt-4"} type="button" onClick={()=>{setEditingSale(true);setNewSale(false)}}>Modificar venta y solicitud</button>}
         {sale.crm_conversation_id&&<Link className="mt-3 inline-block text-xs font-bold text-primary" href={"/inbox?conversation="+encodeURIComponent(sale.crm_conversation_id)}>Abrir chat del CRM</Link>}
        </Panel>
        <Panel title="Accesos rápidos" icon={<FolderOpen size={17} className="text-primary"/>}>
         <div className="grid gap-2">{sectionItems.slice(1).map(x=><button key={x.id} className="flex items-center justify-between rounded-xl border border-border p-3 text-left text-sm font-bold hover:bg-muted" onClick={()=>setSection(x.id)}><span className="flex items-center gap-2">{x.icon}{x.name}</span><span className="text-primary">Abrir</span></button>)}</div>
        </Panel>
       </div>}
-      {section==="solicitud"&&<Panel title="Solicitud de adhesión" icon={<FileText size={17} className="text-primary"/>} aside={<button className={ghost} onClick={()=>printApplication(application,customer,sale)}>Imprimir solicitud</button>}>
-       <p className="mb-4 text-xs text-muted-foreground">Ficha editable según el formulario de Valle Automotores. Incluye identificación, características del plan, unidad entregada y datos laborales.</p>
-       <form key={sale.id+"-solicitud-"+(data.applications.find(x=>x.sale_id===sale.id)?.updated_at||"new")} onSubmit={saveApplication} className="space-y-5">
-        {sections.map(g=><fieldset key={g.title} className="space-y-3"><legend className="mb-2 border-b border-border pb-2 text-sm font-extrabold">{g.title}</legend>
-         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{g.fields.map(f=>{
-          const defaults:Record<string,string>={full_name:customer.full_name,dni:customer.document_number||"",phone:customer.phone,email:customer.email||"",address:customer.address||"",city:customer.city||"",province:customer.province||"",brand:sale.vehicle_description,salesperson:person(sale.agent_id)};
-          const value=application[f.key]??defaults[f.key]??"";
-          return <label key={f.key} className={label+(f.wide?" sm:col-span-2":"")}>{f.label}
-           {f.options?<select className={input} name={f.key} defaultValue={value}>{f.options.map(o=><option key={o} value={o}>{o||"Seleccionar"}</option>)}</select>
-           :<input className={input} name={f.key} type={f.type||"text"} defaultValue={value} step={f.type==="number"?"any":undefined} required={f.key==="full_name"||f.key==="phone"}/>}
-          </label>})}</div>
-        </fieldset>)}
-        <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs"><p><b>Cuota elegida:</b> {money(sale.installment_amount)} · <b>Gastos administrativos:</b> {money(sale.admin_fee)}</p><p className="mt-1"><b>Cuota 1 total:</b> {money(Number(sale.installment_amount)+Number(sale.admin_fee))} · <b>Cuota 2:</b> {fmtDate(sale.second_due_date||installments[1]?.due_date||null)}</p></div>
-        <Submit busy={busy}>Guardar solicitud de adhesión</Submit>
-       </form>
+      {section==="solicitud"&&<Panel title="Solicitud de adhesión" icon={<FileText size={17} className="text-primary"/>} aside={<button className={ghost} type="button" onClick={()=>printApplication(application,customer,sale)}>Imprimir solicitud</button>}>
+       <p className="mb-4 text-xs text-muted-foreground">La solicitud se guarda junto con la venta. Los datos se muestran para consulta y para emitir el contrato. Administración puede modificar las condiciones antes de registrar la firma.</p>
+       {Object.keys(application).length?sections.map(group=><div key={group.title} className="mb-5">
+        <h3 className="mb-3 border-b border-border pb-2 text-sm font-extrabold">{group.title}</h3>
+        <dl className="grid gap-3 sm:grid-cols-2">{group.fields.map(f=><div key={f.key} className={f.wide?"sm:col-span-2":""}>
+         <dt className="text-xs font-semibold text-muted-foreground">{f.label}</dt><dd className="mt-1 break-words text-sm font-medium">{application[f.key]||"—"}</dd>
+        </div>)}</dl>
+       </div>):<p className="text-xs text-muted-foreground">Este legajo es anterior al nuevo formulario. Completá la solicitud antes de enviar un contrato.</p>}
+       <div className="rounded-xl border border-border bg-muted/30 p-3 text-xs"><b>Cuota 1:</b> {money(Number(sale.installment_amount)+Number(sale.admin_fee))} · <b>Cuota 2:</b> {fmtDate(sale.second_due_date||installments[1]?.due_date||null)}</div>
+       {admin&&<button type="button" className={ghost+" mt-3"} onClick={()=>setEditingSale(true)}>Modificar solicitud y condiciones</button>}
       </Panel>}
-      {section==="contrato"&&<div className="grid gap-4 md:grid-cols-2">
+      {section==="contrato"&&<div className="space-y-4">
+       <ContractManager key={sale.id} saleId={sale.id} accountId={accountId!} userId={user!.id} admin={admin}/>
+       <div className="grid gap-4 md:grid-cols-2">
        <Panel title="Contrato firmado" icon={<FileSignature size={18} className="text-primary"/>}>
         <p className="mb-3 text-xs text-muted-foreground">Adjuntá una copia firmada en PDF o imagen. Los archivos quedan privados en el legajo de esta venta.</p>
         <form onSubmit={addContract} className="space-y-3"><label className={label}>Seleccionar contrato firmado<input key={sale.id+"-contract"} className={input} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" required onChange={e=>setContractFile(e.target.files?.[0]||null)}/></label><Submit busy={busy}>Subir contrato</Submit></form>
@@ -370,6 +303,12 @@ export function SalesCenter(){
        <Panel title="Contratos archivados" icon={<FolderOpen size={18} className="text-primary"/>}>
         {documentsFor("contrato").map(x=><button key={x.id} onClick={()=>void openDocument(x)} className="mb-2 flex w-full items-center gap-2 rounded-xl border border-border p-3 text-left text-xs hover:bg-muted"><FileText size={17}/><span className="min-w-0 flex-1 truncate">{x.file_name}</span><span className="text-primary">Ver</span></button>)}
         {!documentsFor("contrato").length&&<p className="text-xs text-muted-foreground">Todavía no se adjuntó un contrato firmado.</p>}
+       </Panel>
+      </div>
+       <Panel title="DNI del cliente y documentación adjunta" icon={<FolderOpen size={18} className="text-primary"/>}>
+        <p className="mb-3 text-xs text-muted-foreground">El asesor puede adjuntar frente y dorso del DNI como imágenes o PDF. Los archivos se almacenan de manera privada.</p>
+        <form onSubmit={addDni} className="flex flex-wrap items-end gap-3"><label className={label+" flex-1"}>Imagen o PDF del DNI<input className={input} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" required onChange={e=>setDniFile(e.target.files?.[0]||null)}/></label><Submit busy={busy}>Adjuntar DNI</Submit></form>
+        <div className="mt-3 flex flex-wrap gap-2">{documentsFor("dni").map(d=><button type="button" className={ghost} key={d.id} onClick={()=>void openDocument(d)}><FileText size={15}/>{d.file_name}</button>)}</div>
        </Panel>
       </div>}
       {section==="pagos"&&<div className="space-y-4">
@@ -437,6 +376,6 @@ export function SalesCenter(){
      </>}
     </>}
    </main>
-  </div>
+  </div>}
  </div>;
 }
