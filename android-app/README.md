@@ -47,4 +47,4 @@ Para alertas de segundos con el teléfono bloqueado se requiere **Firebase Cloud
 
 ## Diagnóstico
 
-Si no hay notificaciones, verificá primero que hayas iniciado sesión y tengas conversaciones o tareas asignadas. Las primeras consultas establecen un punto de partida y evitan notificar mensajes antiguos. Las notificaciones llegan según los permisos y las restricciones de batería de Android.
+Si no hay notificaciones, verificá primero que hayas iniciado sesión y tengas conversaciones o tareas asignadas. Las primeras consultas establecen un punto de partida y evitan notificar mensajes antiguos. Con el ahorro extremo de batería de algunos equipos, la comprobación en segundo plano podría tardar más de 15 minutos. Las notificaciones llegan según los permisos y las restricciones de batería de Android.
