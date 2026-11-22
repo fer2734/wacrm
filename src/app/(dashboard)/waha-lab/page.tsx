@@ -131,7 +131,10 @@ function chatClock(timestamp: number | undefined | null): string {
   const date = new Date(stamp);
   if (!Number.isFinite(date.getTime())) return "—";
   const now = new Date();
-  if (date.toDateString() === now.toDateString())
+  // WhatsApp Business keeps a clock time for conversations from the
+  // preceding 24 hours, even when crossing midnight.
+  if (date.getTime() <= now.getTime() &&
+      now.getTime() - date.getTime() < 24 * 60 * 60 * 1000)
     return date.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) return "Ayer";
