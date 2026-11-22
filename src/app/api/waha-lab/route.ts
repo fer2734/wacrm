@@ -106,7 +106,7 @@ export async function POST(request: Request) {
   if (request.headers.get("origin") !==
       (process.env.NEXT_PUBLIC_SITE_URL || "https://crm.valleautomotores.tech"))
     return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
-  let body: { action?: string; chatId?: string; text?: string };
+  let body: { action?: string; chatId?: string; text?: string; phoneNumber?: string };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 }); }
   const session = encodeURIComponent(ctx.session);
@@ -131,9 +131,28 @@ export async function POST(request: Request) {
     }
     if (!current.ok) return reply(current);
     const status = (current.data as { status?: string })?.status;
-    if (status === "WORKING" || status === "SCAN_QR" || status === "STARTING")
+    if (status === "WORKING" || status === "SCAN_QR_CODE" || status === "SCAN_QR" || status === "STARTING" || status === "PASSKEY_REQUIRED")
       return NextResponse.json(current.data);
     return reply(await waha("/api/sessions/" + session + "/start", "POST"));
+  }
+  if (body.action === "request-code") {
+    const phone = (body.phoneNumber || "").replace(/[ +()\-]/g, "");
+    if (!/^[0-9]{8,16}$/.test(phone))
+      return NextResponse.json({ error: "Ingresá el número completo con código de país, sin el signo +." }, { status: 400 });
+
+    const current = await waha("/api/sessions/" + session);
+    if (current.status === 404)
+      return NextResponse.json({ error: "Primero iniciá WAHA con «Vincular WAHA»." }, { status: 409 });
+    if (!current.ok) return reply(current);
+    const status = (current.data as {status?:string}).status;
+    if (status === "WORKING")
+      return NextResponse.json({ error: "Este dispositivo ya figura conectado." }, { status: 409 });
+    if (status !== "SCAN_QR_CODE" && status !== "SCAN_QR" && status !== "STARTING")
+      return NextResponse.json({
+        error: "La sesión está en estado " + (status || "desconocido") +
+          ". Reiniciá WAHA e intentá solicitar un código."
+      }, { status: 409 });
+    return reply(await waha("/api/" + session + "/auth/request-code", "POST", { phoneNumber: phone }));
   }
   if (body.action === "restart")
     return reply(await waha("/api/sessions/" + session + "/restart", "POST"));
