@@ -48,7 +48,12 @@ export async function GET(request: Request) {
       ? msg as Record<string, unknown> : {};
     const media = record.media && typeof record.media === "object"
       ? record.media as Record<string, unknown> : {};
-    const mediaUrl = typeof media.url === "string" ? media.url : null;
+    // Some WAHA engines return a top-level mediaUrl instead of media.url.
+    // Both forms are resolved only against our pinned private WAHA host.
+    const mediaUrl = typeof media.url === "string" && media.url
+      ? media.url : typeof record.mediaUrl === "string" && record.mediaUrl
+        ? record.mediaUrl : typeof record.media_url === "string"
+          ? record.media_url : null;
     if (!mediaUrl)
       return NextResponse.json({
         error: "Este archivo todavía no está disponible en el dispositivo vinculado"
@@ -64,10 +69,19 @@ export async function GET(request: Request) {
     const headers: Record<string, string> = { "X-Api-Key": key };
     const range = request.headers.get("range");
     if (range && /^bytes=\d*-\d*$/.test(range)) headers.Range = range;
-    const file = await fetch(base + mediaPath, {
+    let file = await fetch(base + mediaPath, {
       headers, cache: "no-store", redirect: "manual",
       signal: AbortSignal.timeout(60000)
     });
+    // WEBJS can expose a URL just before the new media file is fully written.
+    // A short retry on 404 avoids a failed tap without preloading all media.
+    if (file.status === 404) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      file = await fetch(base + mediaPath, {
+        headers, cache: "no-store", redirect: "manual",
+        signal: AbortSignal.timeout(60000)
+      });
+    }
     if (!file.ok || !file.body)
       return NextResponse.json({ error: "WAHA no pudo descargar el archivo" }, {
         status: file.status === 404 ? 404 : 502
