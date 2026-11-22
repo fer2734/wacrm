@@ -110,6 +110,8 @@ export function SalesCenter(){
  const [paymentInstallment,setPaymentInstallment]=useState("");
  const [paymentFile,setPaymentFile]=useState<File|null>(null);
  const [contractFile,setContractFile]=useState<File|null>(null);
+ const [proofFile,setProofFile]=useState<File|null>(null);
+ const [proofPayment,setProofPayment]=useState("");
  const admin=role==="propietario"||role==="administracion";
  const load=useCallback(async(account:string)=>{
   const db=createClient();
@@ -219,6 +221,12 @@ export function SalesCenter(){
    if(paymentFile){try{await upload(paymentFile,"comprobante",r.id)}catch(e){throw new Error("Se guardó el pago pero falló el archivo: "+errorText(e))}}
    setPaymentFile(null);setPaymentInstallment("");(e.target as HTMLFormElement).reset();
   },"Pago registrado; queda pendiente de validación por administración");
+ }
+ async function attachReceipt(e:FormEvent<HTMLFormElement>){
+  e.preventDefault();const f=e.currentTarget;
+  const target=payments.find(p=>p.id===(proofPayment||payments[0]?.id));
+  if(!target||!proofFile)return toast.error("Elegí un pago y su comprobante");
+  await transact(async()=>{await upload(proofFile,"comprobante",target.id);setProofFile(null);setProofPayment("");f.reset()},"Comprobante agregado al historial del pago");
  }
  async function appendInstallment(e:FormEvent<HTMLFormElement>){
   e.preventDefault();if(!sale)return;const form=e.currentTarget;const f=new FormData(form);
@@ -402,6 +410,14 @@ export function SalesCenter(){
           <div><p className="font-bold">Cuota {number||"—"} · {money(p.amount)} · {p.status}</p><p className="mt-1 text-muted-foreground">{fmtDate(p.paid_at)} · {p.method}{p.reference?" · Ref. "+p.reference:""}</p></div>
           <div className="flex flex-wrap gap-2">{proofs.map(d=><button key={d.id} className={ghost} onClick={()=>void openDocument(d)}><FileText size={14}/> {d.file_name}</button>)}{!proofs.length&&<span className="text-muted-foreground">Sin comprobante</span>}</div>
          </div>})}{!payments.length&&<p className="text-xs text-muted-foreground">Todavía no hay pagos informados.</p>}</div>
+       </Panel>
+       <Panel title="Adjuntar comprobante a un pago ya cargado" icon={<Plus size={17} className="text-primary"/>}>
+        <p className="mb-3 text-xs text-muted-foreground">Podés agregar un comprobante recibido después de registrar el pago, sin duplicar el movimiento.</p>
+        <form onSubmit={attachReceipt} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+         <label className={label}>Pago registrado<select className={input} value={proofPayment||payments[0]?.id||""} onChange={e=>setProofPayment(e.target.value)} required>{payments.map(p=><option key={p.id} value={p.id}>Cuota {installments.find(i=>i.id===p.installment_id)?.installment_number||"—"} · {money(p.amount)} · {fmtDate(p.paid_at)}</option>)}</select></label>
+         <label className={label}>Archivo<input className={input} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>setProofFile(e.target.files?.[0]||null)} required/></label>
+         <Submit busy={busy}>Adjuntar</Submit>
+        </form>
        </Panel>
       </div>}
       {section==="seguimiento"&&<div className="grid gap-4 md:grid-cols-2">
