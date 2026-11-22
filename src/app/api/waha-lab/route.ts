@@ -130,10 +130,62 @@ export async function POST(request: Request) {
   if (request.headers.get("origin") !==
       (process.env.NEXT_PUBLIC_SITE_URL || "https://crm.valleautomotores.tech"))
     return NextResponse.json({ error: "Origen no autorizado" }, { status: 403 });
-  let body: { action?: string; chatId?: string; text?: string; phoneNumber?: string };
+  let body: { action?: string; chatId?: string; chatIds?: string[]; text?: string; phoneNumber?: string };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 }); }
   const session = encodeURIComponent(ctx.session);
+
+  if (body.action === "latest-previews") {
+    const chatIds = body.chatIds;
+    if (!Array.isArray(chatIds) || chatIds.length < 1 || chatIds.length > 6 ||
+        chatIds.some(id => typeof id !== "string" || !validChat(id)) ||
+        new Set(chatIds).size !== chatIds.length)
+      return NextResponse.json({ error: "Lote de conversaciones inválido" }, { status: 400 });
+    // The overview may carry an old placeholder lastMessage. Read the real,
+    // latest available message from WhatsApp Web, not the overview timestamp.
+    const entries = await Promise.all(chatIds.map(async chatId => {
+      const response = await waha("/api/" + session + "/chats/" +
+        encodeURIComponent(chatId) +
+        "/messages?limit=3&offset=0&sortBy=timestamp&sortOrder=desc&downloadMedia=false");
+      if (!response.ok)
+        return { chatId, status: "failed" };
+      const payload = response.data;
+      const record = payload && typeof payload === "object"
+        ? payload as Record<string, unknown> : {};
+      const messages: unknown[] = Array.isArray(payload) ? payload :
+        Array.isArray(record.messages) ? record.messages :
+        Array.isArray(record.data) ? record.data : [];
+      const valid = messages.filter(item => {
+        if (!item || typeof item !== "object") return false;
+        const row = item as Record<string, unknown>;
+        const stamp = Number(row.timestamp);
+        const seconds = stamp > 1e12 ? stamp / 1000 : stamp;
+        return Number.isFinite(seconds) &&
+          seconds > 1577836800 && seconds < Date.now() / 1000 + 300;
+      }).sort((a,b) => {
+        const left = Number((a as Record<string, unknown>).timestamp);
+        const right = Number((b as Record<string, unknown>).timestamp);
+        return right - left;
+      });
+      if (!valid.length) return { chatId, status: "unavailable" };
+      const msg = valid[0] as Record<string, unknown>;
+      const type = typeof msg.type === "string" ? msg.type : "chat";
+      const body = typeof msg.body === "string" ? msg.body :
+        typeof msg.caption === "string" ? msg.caption : "";
+      const id = typeof msg.id === "string" ? msg.id :
+        msg.id && typeof msg.id === "object" && typeof (msg.id as Record<string,unknown>)._serialized === "string"
+          ? (msg.id as Record<string,string>)._serialized : "";
+      return { chatId, status: "verified",
+        message: {
+          id, timestamp: Number(msg.timestamp), body: body.slice(0, 700),
+          type, hasMedia: msg.hasMedia === true, fromMe: msg.fromMe === true
+        }
+      };
+    }));
+    return NextResponse.json({ entries }, {
+      headers: { "Cache-Control": "no-store" }
+    });
+  }
 
   if (body.action === "connect") {
     const client = await createClient();
