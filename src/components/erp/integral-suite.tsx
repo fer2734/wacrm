@@ -11,6 +11,8 @@ type C = { id:string; account_id:string; agent_id:string; full_name:string; phon
 type S = { id:string; account_id:string; customer_id:string; agent_id:string; vehicle_description:string; operation_type:string; price:number; initial_amount:number; admin_fee:number; installment_count:number; installment_amount:number; delivery_target_installment:number; stage:string; credit_status:string; notes:string|null; created_at:string };
 type I = { id:string; sale_id:string; installment_number:number; due_date:string; amount:number };
 type P = { id:string; sale_id:string; installment_id:string; amount:number; status:string; paid_at:string; method:string; reference:string|null };
+type Batch = { id:string; sale_id:string; total:number; paid_at:string; method:string; reference:string|null; created_at:string };
+type Proof = { id:string; sale_id:string; batch_id:string|null; file_name:string; object_path:string; kind:string };
 type T = { id:string; sale_id:string|null; installment_id:string|null; kind:string; title:string; details:string|null; due_at:string; status:string; assigned_to:string; auto_key:string|null };
 type CashAccount = { id:string; name:string; kind:string; opening_balance:number; active:boolean; bank_name:string|null };
 type Movement = { id:string; treasury_account_id:string; movement_date:string; direction:string; amount:number; description:string; source_type:string; reconciled_at:string|null; reversal_of:string|null };
@@ -27,10 +29,10 @@ type Fiscal = { id:string; sale_id:string|null; customer_name:string; amount:num
 type Expense = { id:string; description:string; amount:number; expense_date:string; paid:boolean };
 type AdminDocument = { id:string; expense_id:string|null; kind:string; path:string; file_name:string; mime_type:string; file_size:number; created_at:string };
 type Person = { user_id:string; full_name:string|null; email:string };
-type DB = { customers:C[]; sales:S[]; installments:I[]; payments:P[]; tasks:T[]; accounts:CashAccount[]; movements:Movement[];
+type DB = { customers:C[]; sales:S[]; installments:I[]; payments:P[]; batches:Batch[]; proofs:Proof[]; tasks:T[]; accounts:CashAccount[]; movements:Movement[];
  suppliers:Supplier[]; vehicles:Vehicle[]; purchases:Purchase[]; costs:VehicleCost[]; commissions:Commission[];
  checklist:Checklist[]; credits:Credit[]; revisions:Revision[]; templates:Template[]; fiscal:Fiscal[]; expenses:Expense[]; people:Person[]; adminDocs:AdminDocument[] };
-const empty:DB = {customers:[],sales:[],installments:[],payments:[],tasks:[],accounts:[],movements:[],suppliers:[],
+const empty:DB = {customers:[],sales:[],installments:[],payments:[],batches:[],proofs:[],tasks:[],accounts:[],movements:[],suppliers:[],
  vehicles:[],purchases:[],costs:[],commissions:[],checklist:[],credits:[],revisions:[],templates:[],fiscal:[],expenses:[],people:[],adminDocs:[]};
 const money=(value:number)=>new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(Number(value||0));
 const n=(value:FormDataEntryValue|null)=>Number(String(value||"0").replace(",","."))||0;
@@ -103,6 +105,7 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
   const agentData=await Promise.all([
    getRows<C>("erp_customers",account),getRows<S>("erp_sales",account),
    getRows<I>("erp_installments",account),getRows<P>("erp_payments",account),
+   getRows<Batch>("erp_payment_batches",account),getRows<Proof>("erp_documents",account),
    getRows<T>("erp_tasks",account),getRows<Vehicle>("erp_inventory",account),
    getRows<Checklist>("erp_delivery_checklist",account),getRows<Credit>("erp_credit_applications",account),
    getRows<Revision>("erp_installment_revisions",account),getRows<Template>("erp_contract_templates",account)
@@ -119,8 +122,8 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
    getRows<AdminDocument>("erp_admin_documents",account)
   ]):[[],[],[],[],[],[],[],[],[],[]];
   setData({customers:agentData[0],sales:agentData[1],installments:agentData[2],payments:agentData[3],
-   tasks:agentData[4],vehicles:agentData[5],checklist:agentData[6],credits:agentData[7],
-   revisions:agentData[8],templates:agentData[9],accounts:managementData[0],movements:managementData[1],
+   batches:agentData[4],proofs:agentData[5],tasks:agentData[6],vehicles:agentData[7],checklist:agentData[8],credits:agentData[9],
+   revisions:agentData[10],templates:agentData[11],accounts:managementData[0],movements:managementData[1],
    suppliers:managementData[2],purchases:managementData[3],costs:managementData[4],
    commissions:managementData[5],fiscal:managementData[6],expenses:managementData[7],people:managementData[8],adminDocs:managementData[9]});
  },[]);
@@ -305,6 +308,67 @@ export function ErpIntegral({administration=false}:{administration?:boolean}){
        </div>})}</div>
       <div className="mt-3 flex flex-wrap gap-2"><button className={outline} type="button" onClick={printClientRecord}>🖨️ Imprimir solicitud</button>
       <Link className={outline} href={administration?"/erp/administracion":"/erp"}>Ver comprobantes</Link></div>
+      {selectedInstallments.length>0&&<div className="mt-4 border-t border-border pt-3">
+       <h3 className="mb-2 text-sm font-bold">Registrar un pago distribuido</h3>
+       <Notice>Indicá cuánto corresponde a cada cuota. La transferencia se registrará como un solo lote y los importes quedarán pendientes de validación administrativa.</Notice>
+       <form key={currentSale.id} className="mt-2 space-y-2" onSubmit={e=>handleForm(e,async f=>{
+        if(!accountId||!user)throw Error("Sin sesión");
+        const allocations=selectedInstallments.map(i=>({installment_id:i.id,amount:n(f.get("pay-"+i.id))})).filter(i=>i.amount>0);
+        if(!allocations.length)throw Error("Completá el importe de al menos una cuota");
+        const {data:batchId,error}=await createClient().rpc("erp_record_multi_payment",{
+         p_account:accountId,p_sale:currentSale.id,p_allocations:allocations,
+         p_paid_at:v(f.get("paid_at")),p_method:v(f.get("method")),p_reference:v(f.get("reference"))});
+        if(error)throw error;
+        const file=f.get("file");
+        if(file instanceof File&&file.size>0){
+         if(file.size>10485760||!["image/jpeg","image/png","image/webp","application/pdf"].includes(file.type))
+          throw Error("El pago se informó, pero el archivo no se adjuntó. Debe ser JPG, PNG, WEBP o PDF hasta 10 MB");
+         const fileName=file.name.replace(/[^a-zA-Z0-9_.-]/g,"_").slice(-100);
+         const path=accountId+"/"+currentSale.id+"/"+crypto.randomUUID()+"-"+fileName;
+         const db=createClient();
+         const uploaded=await db.storage.from("erp-comprobantes").upload(path,file,{contentType:file.type,upsert:false});
+         if(uploaded.error)throw Error("El pago se informó, pero el comprobante no subió: "+uploaded.error.message);
+         const indexed=await db.from("erp_documents").insert({account_id:accountId,sale_id:currentSale.id,
+          batch_id:String(batchId),kind:"comprobante",object_path:path,file_name:file.name,
+          mime_type:file.type,file_size:file.size,created_by:user.id});
+         if(indexed.error)throw Error("El pago se informó, pero falló el registro del archivo: "+indexed.error.message);
+        }
+       },"Pago repartido informado para validar")}>
+        <div className="max-h-64 space-y-1 overflow-y-auto">{selectedInstallments.map(i=><label key={i.id} className="grid grid-cols-2 items-center gap-2 text-xs">
+         <span>Cuota {i.installment_number} · Saldo {money(outstanding(i))}</span>
+         <input className={input} type="number" name={"pay-"+i.id} step=".01" min="0" placeholder="Importe ($)"/></label>)}</div>
+        <div className="grid grid-cols-2 gap-2">
+         <label className={label}>Fecha<input className={input} type="date" name="paid_at" defaultValue={today()} required/></label>
+         <label className={label}>Medio<select className={input} name="method"><option>transferencia</option><option>efectivo</option><option>deposito</option><option>tarjeta</option><option>otro</option></select></label>
+        </div>
+        <label className={label}>Referencia<input className={input} name="reference" placeholder="N.º de transferencia"/></label>
+        <label className={label}>Comprobante único<input className={input} name="file" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf"/></label>
+        <Submit working={working}>Guardar pago repartido</Submit>
+       </form>
+      </div>}
+      {data.batches.filter(b=>b.sale_id===currentSale.id).length>0&&<div className="mt-4 border-t border-border pt-3">
+       <h3 className="mb-2 text-sm font-bold">Pagos agrupados</h3>
+       <div className="space-y-2">{data.batches.filter(b=>b.sale_id===currentSale.id).map(batch=>{
+        const parts=data.payments.filter(p=>p.batch_id===batch.id);
+        const allPending=parts.length>0&&parts.every(p=>p.status==="pendiente");
+        const allConfirmed=parts.length>0&&parts.every(p=>p.status==="confirmado");
+        return <div key={batch.id} className="rounded-lg border border-border p-2.5 text-xs">
+         <b>{money(batch.total)} · {dateLabel(batch.paid_at)}</b>
+         <p className={muted}>{parts.length} cuota(s) · {batch.reference||"Sin referencia"} · {parts.map(p=>p.status).join(", ")}</p>
+         <div className="mt-2 flex flex-wrap gap-1">
+          {data.proofs.filter(p=>p.batch_id===batch.id).map(proof=><button key={proof.id} type="button" className={outline} onClick={()=>{
+           const popup=window.open("","_blank");
+           void createClient().storage.from("erp-comprobantes").createSignedUrl(proof.object_path,120)
+            .then(({data,error})=>{if(error||!data?.signedUrl){popup?.close();toast.error(error?.message||"No se pudo abrir");return}if(popup)popup.location.href=data.signedUrl;else window.location.href=data.signedUrl});
+          }}>{proof.file_name}</button>)}
+          {admin&&allPending&&<><button type="button" disabled={working} className={outline} onClick={()=>void act(async()=>call("erp_review_payment_batch",{p_batch:batch.id,p_action:"confirmado"}),"Lote de pagos validado")}>✓ Validar lote</button>
+           <button type="button" disabled={working} className={outline} onClick={()=>void act(async()=>call("erp_review_payment_batch",{p_batch:batch.id,p_action:"rechazado"}),"Lote rechazado")}>Rechazar</button></>}
+          {admin&&allConfirmed&&<button type="button" disabled={working} className={outline} onClick={()=>{
+           if(window.confirm("¿Revertir todos los pagos del lote?"))void act(async()=>call("erp_review_payment_batch",{p_batch:batch.id,p_action:"revertido"}),"Lote revertido");
+          }}>Revertir lote</button>}
+         </div>
+        </div>})}</div>
+      </div>}
      </>}
     </Panel>
    </div>
