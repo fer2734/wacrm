@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - feature/android-crm-app-20261122
+      - main
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/android-apk.yml'
+  pull_request:
+    branches:
+      - main
     paths:
       - 'android-app/**'
       - '.github/workflows/android-apk.yml'
