@@ -83,8 +83,8 @@ begin
    select count(*) into verified_count from public.erp_delivery_checklist c
     where c.sale_id=p_sale and c.completed=true and c.item_key in('ficha','identidad','contrato','pagos','credito','vehiculo','acta')
       and (s.operation_type='financiacion' or c.item_key not in('pagos','credito'));
-   if required_count<>case when s.operation_type='financiacion' then 7 else 5 end
-      or verified_count<>required_count then
+   if (s.operation_type='financiacion' and (required_count<>7 or verified_count<>7))
+      or (s.operation_type<>'financiacion' and (required_count<>5 or verified_count<>5)) then
      raise exception 'Checklist documental incompleto. Verificá antes de entregar';
    end if;
  end if;
