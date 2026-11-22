@@ -56,6 +56,11 @@ export default function WahaLab() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [qrEpoch, setQrEpoch] = useState(0);
+  const [qrError, setQrError] = useState("");
+  const [pairingMethod, setPairingMethod] = useState<"qr" | "code">("qr");
+  const [pairPhone, setPairPhone] = useState("");
+  const [pairingCode, setPairingCode] = useState("");
+  const [pairingError, setPairingError] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [chats, setChats] = useState<WaChat[]>([]);
   const [contacts, setContacts] = useState<WaContact[]>([]);
@@ -75,6 +80,7 @@ export default function WahaLab() {
   const [aliasDraft, setAliasDraft] = useState("");
   const [namesLoading, setNamesLoading] = useState(false);
   const connected = status.status === "WORKING";
+  const qrReady = status.status === "SCAN_QR_CODE" || status.status === "SCAN_QR";
 
   const getStatus = useCallback(async () => {
     if (!user) return;
@@ -82,7 +88,12 @@ export default function WahaLab() {
       const incoming = await json("/api/waha-lab?action=status");
       setStatus(incoming);
       setError("");
-      if (incoming.status === "SCAN_QR") setQrEpoch(Math.floor(Date.now() / 15000));
+      if (incoming.status === "SCAN_QR" || incoming.status === "SCAN_QR_CODE")
+        setQrEpoch(Math.floor(Date.now() / 12000));
+      if (incoming.status === "WORKING") {
+        setPairingCode("");
+        setPairingError("");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "WAHA no responde");
     }
@@ -221,6 +232,27 @@ export default function WahaLab() {
       c.id).toLocaleLowerCase("es-AR").includes(term));
   }, [chats, query, contacts, lids, settings]);
 
+  async function requestPairingCode() {
+    if (busy || connected) return;
+    const phone = pairPhone.replace(/[^0-9]/g, "");
+    if (!/^[0-9]{8,16}$/.test(phone)) {
+      setPairingError("Ingresá tu número completo con código de país, sin el signo +.");
+      return;
+    }
+    setBusy(true);
+    setPairingError("");
+    setPairingCode("");
+    try {
+      const result = await action("request-code", { phoneNumber: phone });
+      if (typeof result.code !== "string" || !/^[a-zA-Z0-9-]{4,16}$/.test(result.code))
+        throw new Error("WAHA no devolvió un código de vinculación válido.");
+      setPairingCode(result.code);
+      toast.success("Código generado. Ingresalo en WhatsApp desde tu celular.");
+    } catch (err) {
+      setPairingError(err instanceof Error ? err.message : "No se pudo solicitar el código.");
+    } finally { setBusy(false); }
+  }
+
   async function command(op: "connect"|"restart"|"stop"|"logout") {
     if (busy) return;
     if (op === "logout" && !window.confirm(
@@ -232,6 +264,9 @@ export default function WahaLab() {
       setStatus(result);
       setError("");
       setQrEpoch(Date.now());
+      setQrError("");
+      setPairingError("");
+      setPairingCode("");
       if (op === "connect" || op === "restart") setShowSettings(true);
       if (op === "connect" && user) {
         const { data } = await createClient().from("waha_lab_inboxes")
@@ -319,22 +354,98 @@ export default function WahaLab() {
               aria-label="Cerrar panel"><X className="size-4"/></button>}
           </div>
           {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
-          {status.status === "SCAN_QR" && (
-            <div className="my-2 flex flex-col items-center gap-1">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img key={qrEpoch} src={"/api/waha-lab/qr?v=" + qrEpoch}
-                alt="Escaneá este QR con los Dispositivos vinculados de WhatsApp"
-                className="size-44 rounded-lg border border-border bg-white p-2"/>
-              <span className="text-[11px] text-muted-foreground">
-                WhatsApp → Dispositivos vinculados → Vincular dispositivo
-              </span>
+          {!connected && (
+            <div className="mt-3 space-y-3">
+              <div className="flex w-full gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Método de vinculación">
+                <button type="button" role="tab" aria-selected={pairingMethod === "qr"}
+                  onClick={() => setPairingMethod("qr")}
+                  className={"flex-1 rounded-md px-3 py-2 text-xs font-semibold transition-colors " +
+                    (pairingMethod === "qr" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground")}>
+                  Vincular con QR
+                </button>
+                <button type="button" role="tab" aria-selected={pairingMethod === "code"}
+                  onClick={() => setPairingMethod("code")}
+                  className={"flex-1 rounded-md px-3 py-2 text-xs font-semibold transition-colors " +
+                    (pairingMethod === "code" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground")}>
+                  Vincular con código
+                </button>
+              </div>
+              {pairingMethod === "qr" ? (
+                <div className="flex flex-col items-center gap-2">
+                  {qrReady ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img key={qrEpoch}
+                        src={"/api/waha-lab/qr?v=" + qrEpoch}
+                        alt="Código QR para vincular WhatsApp con WAHA"
+                        onLoad={() => setQrError("")}
+                        onError={() => setQrError("No se pudo obtener la imagen QR del servidor. Probá Reiniciar o Vincular con código.")}
+                        className="size-48 rounded-xl border border-border bg-white p-2" />
+                      <p className="text-center text-[11px] text-muted-foreground">
+                        Abrí WhatsApp en el celular → Dispositivos vinculados → Vincular dispositivo
+                      </p>
+                    </>
+                  ) : (
+                    <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <LoaderCircle className="size-4 animate-spin"/>
+                      {status.status === "STARTING" ? "WAHA está iniciando el navegador..." :
+                        status.status === "FAILED" ? "La sesión falló. Tocá Reiniciar para generar otro QR." :
+                        status.status === "STOPPED" ? "La sesión está detenida. Tocá Vincular WAHA." :
+                        "Iniciá WAHA para generar el QR."}
+                    </p>
+                  )}
+                  {qrError && <p role="alert" className="text-center text-xs text-red-500">{qrError}</p>}
+                  {qrReady && <button type="button" onClick={() => setQrEpoch(Date.now())}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium">
+                    <RefreshCw className="size-3.5"/> Actualizar QR
+                  </button>}
+                </div>
+              ) : (
+                <div className="space-y-2 rounded-xl border border-border bg-background/50 p-3">
+                  <label className="block text-xs font-semibold" htmlFor="waha-pair-phone">
+                    Número de WhatsApp con código de país
+                  </label>
+                  <input id="waha-pair-phone" type="tel" inputMode="tel" autoComplete="tel"
+                    value={pairPhone} onChange={e => setPairPhone(e.target.value)}
+                    placeholder="Ej. 5492984123456"
+                    className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-primary" />
+                  <p className="text-[11px] text-muted-foreground">
+                    Para Argentina: 54 + 9 + código de área + número, sin espacios ni signo +.
+                  </p>
+                  <button type="button" onClick={() => void requestPairingCode()}
+                    disabled={busy || (status.status !== "SCAN_QR_CODE" &&
+                      status.status !== "SCAN_QR" && status.status !== "STARTING")}
+                    className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+                    {busy && <LoaderCircle className="size-4 animate-spin" />}
+                    Generar código de vinculación
+                  </button>
+                  {pairingError && <p role="alert" className="text-xs text-red-500">{pairingError}</p>}
+                  {pairingCode && (
+                    <div className="flex flex-col items-center gap-2 rounded-xl border border-primary/40 bg-primary/5 p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground">Tu código de vinculación</p>
+                      <p className="select-all text-2xl font-bold tracking-[0.15em] text-foreground">{pairingCode}</p>
+                      <button type="button" onClick={() => void navigator.clipboard.writeText(pairingCode).then(() => toast.success("Código copiado"))}
+                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs">
+                        <Copy className="size-3.5"/> Copiar código
+                      </button>
+                      <p className="text-center text-xs text-muted-foreground">
+                        En WhatsApp → Dispositivos vinculados → Vincular dispositivo →
+                        Vincular con número de teléfono, ingresá este código en tu celular.
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    La vinculación por código puede no estar disponible temporalmente. En ese caso usá el QR.
+                  </p>
+                </div>
+              )}
             </div>
           )}
-          <p className="mt-1 text-xs text-muted-foreground">
-            {connected ? "Sesión vinculada. Los mensajes se consultan directamente a WAHA." :
-              status.status === "SCAN_QR" ? "Escaneá el QR para conectar." :
-              status.status === "STARTING" ? "WAHA está iniciando el navegador..." :
-              "Esta prueba no usa Baileys ni importa sus conversaciones anteriores."}
+          <p className="mt-2 text-xs text-muted-foreground">
+            {connected ? "Sesión conectada. WAHA consulta mensajes y contactos." :
+              qrReady ? "WAHA está esperando la vinculación." :
+              status.status === "STARTING" ? "WAHA está preparando la sesión." :
+              "Esta bandeja es independiente de Baileys y del CRM comercial."}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {!connected && <button type="button" disabled={busy}
