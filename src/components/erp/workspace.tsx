@@ -133,7 +133,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
    e.preventDefault();const f=e.currentTarget;const v=new FormData(f);
    await transact(async()=>{
      const values={
-       agent_id:admin?d(v.get("agent_id")):user!.id,
+       agent_id:data.customers.find(c=>c.id===d(v.get("customer_id")))?.agent_id||user!.id,
        vehicle_description:d(v.get("vehicle_description")),vehicle_type:d(v.get("vehicle_type")),
        operation_type:d(v.get("operation_type")),price:number(v.get("price")),
        initial_amount:number(v.get("initial_amount")),admin_fee:number(v.get("admin_fee")),
@@ -353,7 +353,7 @@ export function ErpWorkspace({administration=false}: {administration?:boolean}) 
        {!data.customers.length?<p className="text-sm text-muted-foreground">Primero creá la ficha del cliente en la pestaña Fichas.</p>:
        <form onSubmit={addSale} className="grid grid-cols-2 gap-2">
          <label className={label+" col-span-2"}>Cliente *<select className={input} required name="customer_id">{data.customers.map(c=><option key={c.id} value={c.id}>{c.full_name} · {c.phone}</option>)}</select></label>
-         {admin&&<label className={label+" col-span-2"}>Asesor<select className={input} name="agent_id" defaultValue={user?.id}>{data.people.filter(p=>data.members.some(m=>m.user_id===p.user_id&&m.erp_role!=="consulta")).map(p=><option key={p.user_id} value={p.user_id}>{p.full_name||p.email}</option>)}</select></label>}
+         {admin&&<p className="col-span-2 text-xs text-muted-foreground">La venta se asigna automáticamente al asesor responsable de la ficha del cliente.</p>}
          <label className={label+" col-span-2"}>Vehículo de interés *<input className={input} name="vehicle_description" placeholder="Ej: Toyota Hilux SRX 2025" required minLength={2}/></label>
          <label className={label}>Tipo<select className={input} name="vehicle_type">{["auto","camioneta","moto","otro"].map(x=><option key={x}>{x}</option>)}</select></label>
          <label className={label}>Venta<select className={input} name="operation_type"><option value="financiacion">Financiación</option><option value="directa">Directa</option></select></label>
