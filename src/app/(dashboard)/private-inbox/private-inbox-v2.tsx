@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   ArrowLeft, Check, ChevronDown, Copy, Edit3, EllipsisVertical, GitBranch,
   LockKeyhole, MessageCircle, RefreshCw, Search, Send, Settings2,
-  Smartphone, Unplug, UserRound, Wifi, WifiOff, X
+  Smartphone, Unplug, UserRound, Wifi, WifiOff, X, Upload, ContactRound
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -20,6 +20,38 @@ type Chat = {
 type Note = { id: string; message_text: string; from_me: boolean; sent_at: string; message_type: string };
 type Stage = { id: string; name: string; color: string; position: number };
 type Inbox = { id: string; display_name: string; connected_phone: string | null };
+type SavedContact = { id: string; display_name: string; phone_digits: string };
+type ImportedContact = { display_name: string; phone_digits: string };
+
+function parseVcardContacts(input: string): ImportedContact[] {
+  if (input.length > 8_000_000) throw new Error("El archivo de contactos es demasiado grande");
+  const entries = input.replace(/\r\n?/g, "\n").replace(/\n[ \t]/g, "").split(/BEGIN:VCARD/i);
+  const contacts = new Map<string, string>();
+  for (const entry of entries) {
+    if (!/END:VCARD/i.test(entry)) continue;
+    let name = "";
+    let alternate = "";
+    const phones: string[] = [];
+    for (const row of entry.split("\n")) {
+      const colon = row.indexOf(":");
+      if (colon < 0) continue;
+      const field = row.slice(0, colon).split(";")[0].split(".").pop()?.toUpperCase();
+      const value = row.slice(colon + 1).trim();
+      if (field === "FN") name = value.replace(/\\([,;\\nN])/g, (_, c: string) =>
+        c === "n" || c === "N" ? " " : c);
+      if (field === "N") alternate = value.split(";").slice(0, 2).reverse().join(" ").trim();
+      if (field === "TEL") phones.push(value.replace(/^tel:/i, "").replace(/[^+0-9]/g, ""));
+    }
+    name = (name || alternate).trim().slice(0, 120);
+    if (!name) continue;
+    for (const phone of phones) {
+      const digits = phone.replace(/[^0-9]/g, "");
+      if (/^[0-9]{7,20}$/.test(digits)) contacts.set(digits, name);
+    }
+  }
+  return [...contacts.entries()].map(([phone_digits, display_name]) => ({ display_name, phone_digits }));
+}
+
 type Connection = {
   status: string; ready?: boolean; qr?: string | null; phone?: string | null;
   lastError?: string | null; error?: string | null; lastCode?: number | string | null
@@ -75,6 +107,11 @@ export default function PrivateInboxV2() {
   const [refreshingContacts, setRefreshingContacts] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastChatRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importingContacts, setImportingContacts] = useState(false);
+  const [addressbookSearch, setAddressbookSearch] = useState("");
+  const [savedContacts, setSavedContacts] = useState<SavedContact[]>([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
 
   const loadInbox = useCallback(async () => {
     if (!user) return;
@@ -224,6 +261,52 @@ export default function PrivateInboxV2() {
     } finally { setRefreshingContacts(false); }
   }
 
+  async function importAddressbook(file: File | undefined) {
+    if (!file || !user || importingContacts) return;
+    setImportingContacts(true);
+    try {
+      if (!/\\.vcf$/i.test(file.name)) throw new Error("Seleccioná un archivo de contactos .VCF");
+      if (file.size > 8_000_000) throw new Error("El archivo supera el tamaño admitido");
+      const contacts = parseVcardContacts(await file.text());
+      if (!contacts.length) throw new Error("No se encontraron contactos con nombre y teléfono en ese archivo");
+      const db = createClient();
+      for (let i = 0; i < contacts.length; i += 150) {
+        const rows = contacts.slice(i, i + 150).map(c => ({ ...c, owner_user_id: user.id }));
+        const { error } = await db.from("private_whatsapp_addressbook")
+          .upsert(rows, { onConflict: "owner_user_id,phone_digits" });
+        if (error) throw new Error("No se pudo importar la agenda: " + error.message);
+      }
+      const { data, error } = await db.rpc("match_private_whatsapp_addressbook");
+      if (error) throw new Error("Se importaron los contactos, pero falló la asociación automática");
+      toast.success(contacts.length + " teléfonos guardados en tu agenda privada. " +
+        Number(data || 0) + " conversaciones asociadas automáticamente.");
+      await loadChats();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo importar la agenda");
+    } finally {
+      setImportingContacts(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  useEffect(() => {
+    if (!user || !editContact) return;
+    let cancelled = false;
+    setLoadingContacts(true);
+    const timer = window.setTimeout(() => {
+      const term = addressbookSearch.trim().replace(/[^\\p{L}\\p{N} +@._-]/gu, "").slice(0, 60);
+      let query = createClient().from("private_whatsapp_addressbook")
+        .select("id,display_name,phone_digits").eq("owner_user_id", user.id);
+      if (term) query = query.or("display_name.ilike.%" + term + "%,phone_digits.ilike.%" + term + "%");
+      void query.order("display_name", { ascending: true }).limit(20).then(({ data, error }) => {
+        if (cancelled) return;
+        setSavedContacts(error ? [] : (data || []) as SavedContact[]);
+        setLoadingContacts(false);
+      });
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [addressbookSearch, editContact, user]);
+
   async function changeStage(chat: Chat, stage: string) {
     if (!user) return;
     const { error } = await createClient().from("private_whatsapp_chats")
@@ -311,6 +394,9 @@ export default function PrivateInboxV2() {
 
   return (
     <div className="-m-4 flex h-[calc(100dvh-3.5rem)] min-h-[320px] flex-col overflow-hidden bg-background sm:-m-6">
+      <input ref={fileInputRef} type="file" accept=".vcf,text/vcard,text/x-vcard"
+        className="hidden" aria-label="Importar archivo de contactos VCF"
+        onChange={event => void importAddressbook(event.target.files?.[0])} />
       {/* The global page header stays compact, and disappears on mobile inside a chat. */}
       <div className={(mobileChat ? "hidden sm:flex " : "flex ") +
         "shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 sm:px-4"}>
@@ -402,6 +488,21 @@ export default function PrivateInboxV2() {
               </>
             )}
           </div>
+          <div className="rounded-lg border border-border bg-background/60 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold">Nombres de mi agenda</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Importá un archivo .VCF exportado desde Contactos de tu celular.
+                </p>
+              </div>
+              <button type="button" disabled={importingContacts}
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold disabled:opacity-50">
+                <Upload className="size-4" /> {importingContacts ? "Importando..." : "Importar .VCF"}
+              </button>
+            </div>
+          </div>
           <p className="text-[11px] text-muted-foreground">
             La conexión mediante dispositivo vinculado no es una integración oficial de WhatsApp.
           </p>
@@ -445,6 +546,11 @@ export default function PrivateInboxV2() {
                         {chat.unread_count > 0 &&
                           <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">{chat.unread_count}</span>}
                       </div>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {phoneNumber(chat) || (chat.remote_jid.endsWith("@lid")
+                          ? "WhatsApp ID · " + digits(chat.remote_jid).slice(-6)
+                          : "Teléfono no disponible")}
+                      </p>
                       {!!chat.profile_name && chat.profile_name !== title &&
                         <p className="truncate text-[11px] text-muted-foreground">Perfil: {chat.profile_name}</p>}
                       <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
@@ -503,9 +609,12 @@ export default function PrivateInboxV2() {
                       <Edit3 className="size-3.5 shrink-0 text-muted-foreground" />
                     </span>
                     <span className="block truncate text-[11px] text-muted-foreground">
-                      {active.profile_name ? "Perfil WhatsApp: " + active.profile_name :
-                        number ? number : "Perfil de WhatsApp no disponible · Editar contacto"}
+                      {number || "Teléfono no informado por WhatsApp"}
                     </span>
+                    {!!active.profile_name && active.profile_name !== selectedName &&
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        Perfil: {active.profile_name}
+                      </span>}
                   </button>
                   {number && <button type="button" onClick={() => {
                     void navigator.clipboard.writeText(number).then(() => toast.success("Teléfono copiado"));
@@ -606,6 +715,27 @@ export default function PrivateInboxV2() {
                 Si WhatsApp no informa el número, podés ingresarlo manualmente sin modificar la cuenta del cliente.
               </span>
             </label>
+            <div className="space-y-2 rounded-xl border border-border bg-background/40 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold">
+                <ContactRound className="size-4 text-primary" /> Buscar en mi agenda importada
+              </p>
+              <input value={addressbookSearch} onChange={e => setAddressbookSearch(e.target.value)}
+                placeholder="Nombre o teléfono guardado"
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none" />
+              <div className="private-wa-scroll max-h-36 space-y-1 overflow-y-auto">
+                {savedContacts.map(c => (
+                  <button key={c.id} type="button" onClick={() => {
+                    setAliasDraft(c.display_name); setPhoneDraft("+" + c.phone_digits);
+                  }} className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted">
+                    <span className="min-w-0 truncate text-xs font-medium">{c.display_name}</span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">+{c.phone_digits}</span>
+                  </button>
+                ))}
+                {loadingContacts && <p className="text-[11px] text-muted-foreground">Buscando...</p>}
+                {!savedContacts.length && !loadingContacts &&
+                  <p className="text-[11px] text-muted-foreground">Sin coincidencias. Podés cargar un archivo .VCF desde Configuración.</p>}
+              </div>
+            </div>
             <button type="submit" disabled={saving}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-50">
               <Check className="size-4" /> Guardar contacto
