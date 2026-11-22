@@ -47,6 +47,7 @@ create table if not exists public.erp_signing_requests (
  signer_user_agent text,
  consent_data boolean not null default false,
  consent_contract boolean not null default false,
+ consent_marketing boolean not null default false,
  constraint erp_signing_requests_sale_account_fk foreign key(sale_id,account_id)
    references public.erp_sales(id,account_id) on delete cascade,
  constraint erp_signing_requests_signed_complete check (
