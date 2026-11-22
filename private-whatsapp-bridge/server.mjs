@@ -14,6 +14,7 @@ if (!secret || secret.length < 32 || !callbackUrl || !(/^(https:\/\/[^/]+|http:\
 }
 const sessions = new Map();
 const pairingAttempts = new Map();
+const erasedOwners = new Set();
 const MAX_PAIRED_RETRIES = 4;
 const QR_WAIT_MS = 30000;
 const explainCode = code => {
@@ -32,7 +33,7 @@ const appendInFlight = new Map();
 const allowedJid = jid => typeof jid === "string" &&
   /^(?:[0-9]{6,20}@(s\.whatsapp\.net|lid)|[0-9]{5,20}-[0-9]{4,20}@g\.us)$/.test(jid);
 async function appendEvents(ownerId, events) {
-  if (!events.length) return;
+  if (!events.length || erasedOwners.has(ownerId)) return;
   const folder = path.join(BASE, ownerId);
   await fs.mkdir(folder, { recursive: true, mode: 0o700 });
   const output = events.map(event => JSON.stringify(event)).join("\n") + "\n";
@@ -265,6 +266,7 @@ async function enrichKnownChats(ownerId, session) {
   }
 }
 async function start(ownerId) {
+  if (erasedOwners.has(ownerId)) throw new Error("Private WhatsApp session was erased");
   const prev = sessions.get(ownerId);
   if (prev?.status === "connected" || (prev?.status === "qr" && prev.qr) ||
       (prev?.status === "connecting" && Date.now() - prev.startedAt < QR_WAIT_MS)) return prev;
@@ -469,6 +471,24 @@ async function unlink(ownerId) {
   pairingAttempts.delete(ownerId);
   await setStatus(ownerId, "not_connected", null);
 }
+// Full, owner-scoped erasure is separate from ordinary unlinking, which
+// intentionally preserves the message journal. Never wipe another
+// agent's volume or the commercial inbox.
+async function eraseOwnerSession(ownerId) {
+  erasedOwners.add(ownerId);
+  const session = sessions.get(ownerId);
+  sessions.delete(ownerId);
+  pairingAttempts.delete(ownerId);
+  if (session?.sock) {
+    try { await session.sock.logout(); } catch (err) {
+      logger.warn({ error: String(err) }, "WhatsApp logout did not complete before erasure");
+    }
+    try { session.sock.end(undefined); } catch {}
+  }
+  const inflight = appendInFlight.get(ownerId);
+  if (inflight) await inflight.catch(() => {});
+  await fs.rm(path.join(BASE, ownerId), { recursive: true, force: true });
+}
 async function readJson(req) {
   const parts = [];
   let size = 0;
@@ -526,6 +546,7 @@ http.createServer(async (req, res) => {
       return send(res, 200, { checked: requested.length, resolved });
     }
     if (rawPath.pathname === "/v1/connect" && req.method === "POST") {
+      erasedOwners.delete(ownerId);
       const instance = await start(ownerId);
       return send(res, 200, { status: instance.status, qr: instance.qr, phone: instance.phone });
     }
@@ -536,6 +557,12 @@ http.createServer(async (req, res) => {
     if (rawPath.pathname === "/v1/disconnect" && req.method === "POST") {
       await unlink(ownerId);
       return send(res, 200, { status: "not_connected" });
+    }
+    if (rawPath.pathname === "/v1/erase" && req.method === "POST") {
+      if (body.confirm !== "BORRAR TODO")
+        return send(res, 400, { error: "Confirmation required" });
+      await eraseOwnerSession(ownerId);
+      return send(res, 200, { erased: true });
     }
     if (rawPath.pathname === "/v1/send" && req.method === "POST") {
       const instance = sessions.get(ownerId);
