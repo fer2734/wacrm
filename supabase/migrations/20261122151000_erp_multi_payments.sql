@@ -31,7 +31,7 @@ for each row execute function public.erp_log_changes();
 create or replace function public.erp_record_multi_payment(
  p_account uuid,p_sale uuid,p_allocations jsonb,p_paid_at date,p_method text,p_reference text)
 returns uuid language plpgsql security definer set search_path='' as $$
-declare seller_id uuid; bucket uuid; line jsonb; quota uuid; value numeric(15,2);
+declare seller_id uuid; bucket uuid; line jsonb; quota uuid; allocated numeric(15,2);
         total numeric(15,2):=0; num_items integer; num_unique integer;
 begin
  if not public.erp_can_access_sale(p_sale) then raise exception 'No autorizado para registrar pagos';end if;
@@ -45,18 +45,18 @@ begin
  if num_items=0 or num_items>72 then raise exception 'Ingresá entre 1 y 72 cuotas';end if;
  select count(distinct entry->>'installment_id') into num_unique from jsonb_array_elements(p_allocations) entry;
  if num_items<>num_unique then raise exception 'No repitas la misma cuota';end if;
- for line in select value from jsonb_array_elements(p_allocations) as t(value) loop
+ for line in select t.item from jsonb_array_elements(p_allocations) as t(item) loop
    quota:=(line->>'installment_id')::uuid;
-   value:=(line->>'amount')::numeric;
-   if value is null or value<=0 or value>9999999999999 then raise exception 'Monto inválido';end if;
+   allocated:=(line->>'amount')::numeric;
+   if allocated is null or allocated<=0 or allocated>9999999999999 then raise exception 'Monto inválido';end if;
    if not exists(select 1 from public.erp_installments where id=quota and sale_id=p_sale and account_id=p_account)
    then raise exception 'Cuota ajena a la venta';end if;
-   total:=total+value;
+   total:=total+allocated;
  end loop;
  insert into public.erp_payment_batches(account_id,sale_id,total,paid_at,method,reference,created_by)
  values(p_account,p_sale,total,p_paid_at,p_method,left(p_reference,200),(select auth.uid()))
  returning id into bucket;
- for line in select value from jsonb_array_elements(p_allocations) as t(value) loop
+ for line in select t.item from jsonb_array_elements(p_allocations) as t(item) loop
    insert into public.erp_payments(account_id,sale_id,installment_id,batch_id,amount,paid_at,method,reference,created_by,status)
    values(p_account,p_sale,(line->>'installment_id')::uuid,bucket,(line->>'amount')::numeric,
       p_paid_at,p_method,left(p_reference,200),(select auth.uid()),'pendiente');
