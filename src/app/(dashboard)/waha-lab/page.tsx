@@ -15,14 +15,16 @@ type WaStatus = { status?: string; engine?: { engine?: string } | string; me?: {
 type WaMessage = { id: string; timestamp: number; fromMe?: boolean;
   body?: string; type?: string; hasMedia?: boolean };
 type LatestPreview = {
-  status: "verified" | "unavailable" | "failed";
+  status: "verified" | "incomplete" | "unavailable" | "failed";
   message?: WaMessage;
 };
 type LatestPreviewEntry = { chatId: string; status: LatestPreview["status"]; message?: WaMessage };
 type WaChat = { id: string; name?: string; picture?: string | null;
   lastMessage?: WaMessage | null; unreadCount?: number;
   archived?: boolean; isArchived?: boolean; isFavorite?: boolean;
-  _chat?: { unreadCount?: number; archived?: boolean; isArchived?: boolean; isFavorite?: boolean } };
+  pinned?: boolean;
+  _chat?: { unreadCount?: number; archived?: boolean; isArchived?: boolean;
+    isFavorite?: boolean; pin?: number; pinned?: boolean } };
 type WaLabel = { id: string; name: string; type?: number; isActive?: boolean; colorHex?: string };
 type WaContact = { id: string; number?: string; name?: string; pushname?: string;
   shortName?: string; isMyContact?: boolean };
@@ -37,6 +39,40 @@ function archivedFlag(chat: WaChat): boolean {
   if (typeof chat.archived === "boolean") return chat.archived;
   if (typeof chat.isArchived === "boolean") return chat.isArchived;
   return chat._chat?.archived === true || chat._chat?.isArchived === true;
+}
+function normalizeMessage(value: unknown): WaMessage | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const raw = item._data && typeof item._data === "object"
+    ? item._data as Record<string, unknown> : {};
+  const sourceStamp = Number(item.timestamp ?? raw.t ?? raw.timestamp);
+  const timestamp = sourceStamp > 1e12 ? sourceStamp / 1000 : sourceStamp;
+  if (!Number.isFinite(timestamp) || timestamp < 1577836800 ||
+      timestamp > Date.now() / 1000 + 300) return null;
+  const type = typeof item.type === "string" ? item.type :
+    typeof raw.type === "string" ? raw.type : "unknown";
+  const body = [item.body, item.caption, raw.body, raw.caption, raw.text]
+    .find(part => typeof part === "string" && part.trim()) as string | undefined;
+  const mediaType = ["ptt", "audio", "image", "video", "sticker",
+    "document", "location", "vcard"].includes(type);
+  const hasMedia = item.hasMedia === true || raw.isMedia === true ||
+    mediaType || typeof raw.directPath === "string";
+  const originalId = item.id;
+  const id = typeof originalId === "string" ? originalId :
+    originalId && typeof originalId === "object" &&
+    typeof (originalId as Record<string, unknown>)._serialized === "string"
+      ? (originalId as Record<string, string>)._serialized : String(timestamp);
+  return { id, timestamp, type, body: body || "", hasMedia,
+    fromMe: item.fromMe === true };
+}
+function meaningfulMessage(message: WaMessage | null | undefined): boolean {
+  return !!message && (!!message.body?.trim() || message.hasMedia === true ||
+    ["ptt", "audio", "image", "video", "sticker", "document",
+      "location", "vcard", "contact", "poll_creation"].includes(message.type || ""));
+}
+function isPinned(chat: WaChat): boolean {
+  return chat.pinned === true || chat._chat?.pinned === true ||
+    (typeof chat._chat?.pin === "number" && chat._chat.pin > 0);
 }
 function normalizeChat(value: unknown): WaChat | null {
   if (typeof value === "string")
@@ -55,13 +91,22 @@ function normalizeChat(value: unknown): WaChat | null {
     typeof rawInner?.archived === "boolean" ? rawInner.archived :
     typeof rawInner?.isArchived === "boolean" ? rawInner.isArchived : undefined;
   const rawLast = item.lastMessage && typeof item.lastMessage === "object"
-    ? item.lastMessage as WaMessage : null;
+    ? normalizeMessage(item.lastMessage) : null;
   return { id,
     name: typeof item.name === "string" ? item.name : undefined,
     lastMessage: rawLast,
     unreadCount: typeof item.unreadCount === "number" ? item.unreadCount :
       typeof rawInner?.unreadCount === "number" ? rawInner.unreadCount : 0,
-    archived, isFavorite: item.isFavorite === true || rawInner?.isFavorite === true
+    archived,
+    pinned: item.pinned === true || item.isPinned === true ||
+      rawInner?.pinned === true || (typeof rawInner?.pin === "number" && rawInner.pin > 0),
+    _chat: rawInner ? {
+      unreadCount: typeof rawInner.unreadCount === "number" ? rawInner.unreadCount : 0,
+      archived, pinned: rawInner.pinned === true,
+      pin: typeof rawInner.pin === "number" ? rawInner.pin : 0,
+      isFavorite: rawInner.isFavorite === true
+    } : undefined,
+    isFavorite: item.isFavorite === true || rawInner?.isFavorite === true
   };
 }
 function normalizedList(value: unknown): WaChat[] {
@@ -103,7 +148,8 @@ function previewText(message: WaMessage): string {
     case "sticker": return "Sticker";
     case "location": return "📍 Ubicación";
     case "contact": return "👤 Contacto";
-    default: return message.hasMedia ? "📎 Archivo multimedia" : "Mensaje sin texto";
+    default: return message.hasMedia ? "📎 Archivo multimedia" :
+      "Contenido no sincronizado en WhatsApp Web";
   }
 }
 function jidPhone(jid: string | undefined): string {
@@ -303,13 +349,15 @@ export default function WahaLab() {
     try {
       const result = await json("/api/waha-lab?action=messages&chatId=" +
         encodeURIComponent(active.id) + "&limit=" + messageLimit);
-      const rows: WaMessage[] = Array.isArray(result) ? result : result.messages || [];
+      const source: unknown[] = Array.isArray(result) ? result : result.messages || [];
+      const rows = source.map(normalizeMessage).filter((msg): msg is WaMessage => msg !== null);
       setMessages(rows.slice().sort((a,b) => (a.timestamp || 0)-(b.timestamp || 0)));
       const mostRecent = rows.reduce<WaMessage | null>(
-        (best, msg) => Number(msg.timestamp) > Number(best?.timestamp || 0) ? msg : best,
+        (best, msg) => meaningfulMessage(msg) &&
+          Number(msg.timestamp) > Number(best?.timestamp || 0) ? msg : best,
         null
       );
-      if (mostRecent && Number.isFinite(Number(mostRecent.timestamp))) {
+      if (mostRecent) {
         setLatestByChat(old => ({
           ...old, [active.id]: { status: "verified", message: mostRecent }
         }));
@@ -473,16 +521,21 @@ export default function WahaLab() {
   // preview or show the stale timestamp as a reliable chat-list date.
   const verifiedChats = useMemo(() => allChats.map(chat => {
     const resolved = latestByChat[chat.id];
-    return {
-      ...chat,
-      lastMessage: resolved?.status === "verified" && resolved.message
-        ? resolved.message : null
-    };
+    const overview = meaningfulMessage(chat.lastMessage) ? chat.lastMessage : null;
+    const checked = resolved?.status === "verified" &&
+      meaningfulMessage(resolved.message) ? resolved.message : null;
+    // Keep verified message content, but don't replace a newer readable
+    // overview with an older history result.
+    const best = checked && overview
+      ? checked.timestamp >= overview.timestamp ? checked : overview
+      : checked || overview;
+    return { ...chat, lastMessage: best };
   }).sort((a,b) => {
-    const one = a.lastMessage?.timestamp || 0;
-    const two = b.lastMessage?.timestamp || 0;
+    if (isPinned(a) !== isPinned(b)) return isPinned(a) ? -1 : 1;
     const sec = (value:number) => value > 1e12 ? value / 1000 : value;
-    return sec(two) - sec(one);
+    const tA = a.lastMessage?.timestamp || 0;
+    const tB = b.lastMessage?.timestamp || 0;
+    return sec(tB) - sec(tA);
   }), [allChats, latestByChat]);
 
   const archivedCount = verifiedChats.filter(archivedFlag).length;
@@ -521,8 +574,9 @@ export default function WahaLab() {
             for (const id of ids) {
               const entry = byId.get(id);
               next[id] = entry?.status === "verified" && entry.message
-                ? { status: "verified", message: entry.message }
-                : { status: entry?.status === "unavailable" ? "unavailable" : "failed" };
+                ? { status: "verified", message: normalizeMessage(entry.message) || undefined }
+                : { status: entry?.status === "unavailable" ? "unavailable"
+                  : entry?.status === "incomplete" ? "incomplete" : "failed" };
             }
             return next;
           });
@@ -924,7 +978,8 @@ export default function WahaLab() {
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 {checkingLatest && <LoaderCircle className="size-3 animate-spin" />}
-                Últimos mensajes verificados: {verifiedTotal.toLocaleString("es-AR")} / {allChats.length.toLocaleString("es-AR")}
+                Chats revisados: {verifiedTotal.toLocaleString("es-AR")} / {allChats.length.toLocaleString("es-AR")} ·
+                Con contenido: {Object.values(latestByChat).filter(v => v.status === "verified" && meaningfulMessage(v.message)).length.toLocaleString("es-AR")}
               </span>
               <button type="button" disabled={!connected}
                 onClick={() => refreshVerifiedPreviews()}
@@ -954,9 +1009,10 @@ export default function WahaLab() {
             {filtered.slice(0, limit).map(chat => {
               const title = displayName(chat);
               const phone = phoneOf(chat);
-              const stage = stageOf(chat);
+              // Don't place the default "Nuevo contacto" label on every row.
+              const stage = stages.find(s => s.id === settings[chat.id]?.stage_id);
               return <button type="button" key={chat.id}
-                onClick={()=>{setActive(chat);setMessages([]);setMessageLimit(80);setAliasEdit(false);}}
+                onClick={()=>openChat(chat)}
                 className={"block w-full border-b border-border/60 px-3 py-3 text-left hover:bg-muted/50 " +
                   (active?.id===chat.id ? "bg-primary/10":"")}>
                 <div className="flex items-start gap-2.5">
@@ -973,13 +1029,15 @@ export default function WahaLab() {
                     </p>
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                        {latestByChat[chat.id]?.status === "verified" && chat.lastMessage
+                        {chat.lastMessage && meaningfulMessage(chat.lastMessage)
                           ? previewText(chat.lastMessage)
-                          : latestByChat[chat.id]?.status === "unavailable"
-                            ? "WhatsApp Web no entregó mensajes de este chat"
-                            : latestByChat[chat.id]?.status === "failed"
-                              ? "No se pudo verificar el último mensaje"
-                              : "Verificando último mensaje..."}
+                          : latestByChat[chat.id]?.status === "incomplete"
+                            ? "Contenido aún no sincronizado"
+                            : latestByChat[chat.id]?.status === "unavailable"
+                              ? "WhatsApp Web no entregó mensajes"
+                              : latestByChat[chat.id]?.status === "failed"
+                                ? "No se pudo verificar el último mensaje"
+                                : "Verificando último mensaje..."}
                       </span>
                       {stage && <span className="max-w-28 shrink-0 truncate rounded-md border border-border px-1.5 py-0.5 text-[10px] font-semibold"
                         style={{ borderColor: (stage.color||"#64748b")+"66",
