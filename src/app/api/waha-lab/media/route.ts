@@ -72,8 +72,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "WAHA no pudo descargar el archivo" }, {
         status: file.status === 404 ? 404 : 502
       });
-    const mime = typeof media.mimetype === "string" ? media.mimetype :
+    const rawMime = typeof media.mimetype === "string" ? media.mimetype :
       file.headers.get("content-type") || "application/octet-stream";
+    // Opus voice notes can report "audio/ogg; codecs=opus".
+    const mime = rawMime.split(";")[0].trim().toLowerCase();
     const supported = /^(image\/(jpeg|png|webp|gif)|audio\/[a-z0-9.+-]+|video\/[a-z0-9.+-]+|application\/pdf)$/i.test(mime);
     const out = new Headers({
       "Content-Type": supported ? mime : "application/octet-stream",
