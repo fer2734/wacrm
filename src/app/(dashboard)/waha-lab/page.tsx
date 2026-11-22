@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive, ArchiveRestore, ArrowLeft, Check, ChevronDown, Copy, Edit3, GitBranch, LoaderCircle,
+  Image as ImageIcon, Mic, FileText, Play, Film, Download,
   LockKeyhole, MessageCircle, RefreshCw, Search, Send, Settings2, Smartphone,
   Unplug, Wifi, WifiOff, X
 } from "lucide-react";
@@ -13,7 +14,8 @@ import { useAuth } from "@/hooks/use-auth";
 type WaStatus = { status?: string; engine?: { engine?: string } | string; me?: { id?: string };
   error?: string; message?: string };
 type WaMessage = { id: string; timestamp: number; fromMe?: boolean;
-  body?: string; type?: string; hasMedia?: boolean };
+  body?: string; type?: string; hasMedia?: boolean;
+  media?: { mimetype?: string; filename?: string | null } | null };
 type LatestPreview = {
   status: "verified" | "incomplete" | "unavailable" | "failed";
   message?: WaMessage;
@@ -62,8 +64,15 @@ function normalizeMessage(value: unknown): WaMessage | null {
     originalId && typeof originalId === "object" &&
     typeof (originalId as Record<string, unknown>)._serialized === "string"
       ? (originalId as Record<string, string>)._serialized : String(timestamp);
+  const media = item.media && typeof item.media === "object"
+    ? item.media as Record<string, unknown> : {};
   return { id, timestamp, type, body: body || "", hasMedia,
-    fromMe: item.fromMe === true };
+    fromMe: item.fromMe === true,
+    media: {
+      mimetype: typeof media.mimetype === "string" ? media.mimetype : undefined,
+      filename: typeof media.filename === "string" ? media.filename : null
+    }
+  };
 }
 function meaningfulMessage(message: WaMessage | null | undefined): boolean {
   return !!message && (!!message.body?.trim() || message.hasMedia === true ||
@@ -216,6 +225,9 @@ export default function WahaLab() {
   const [active, setActive] = useState<WaChat | null>(null);
   const openedChatFromList = useRef(false);
   const [messages, setMessages] = useState<WaMessage[]>([]);
+  const [openMediaId, setOpenMediaId] = useState<string | null>(null);
+  const [mediaErrorId, setMediaErrorId] = useState<string | null>(null);
+  const [imageViewer, setImageViewer] = useState<string | null>(null);
   const [messageLimit, setMessageLimit] = useState(80);
   const [draft, setDraft] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
@@ -678,6 +690,8 @@ export default function WahaLab() {
     }
     setActive(chat);
     setMessages([]);
+    setOpenMediaId(null);
+    setMediaErrorId(null);
     setMessageLimit(80);
     setAliasEdit(false);
   }
@@ -1189,20 +1203,84 @@ export default function WahaLab() {
                   Ver anteriores
                 </button>}
               <div className="mt-auto space-y-2">
-                {messages.map(message =>
-                  <div className={"flex "+(message.fromMe?"justify-end":"justify-start")}
+                {messages.map(message => {
+                  const kind = (message.type || "").toLowerCase();
+                  const mime = message.media?.mimetype || "";
+                  const audio = ["audio","ptt"].includes(kind) || mime.startsWith("audio/");
+                  const image = ["image","sticker"].includes(kind) || mime.startsWith("image/");
+                  const video = kind === "video" || mime.startsWith("video/");
+                  const document = kind === "document" || mime === "application/pdf";
+                  const isMedia = message.hasMedia || audio || image || video || document;
+                  const source = "/api/waha-lab/media?chatId=" + encodeURIComponent(active.id) +
+                    "&messageId=" + encodeURIComponent(message.id);
+                  const opened = openMediaId === message.id;
+                  return <div className={"flex "+(message.fromMe?"justify-end":"justify-start")}
                     key={message.id}>
-                    <div className={"max-w-[86%] rounded-2xl px-3 py-2 text-[13px] sm:max-w-[70%] "+
+                    <div className={"max-w-[90%] rounded-2xl px-3 py-2 text-[13px] sm:max-w-[70%] "+
                       (message.fromMe?"rounded-br-sm bg-primary text-primary-foreground":
                         "rounded-bl-sm border border-border bg-card text-foreground")}>
-                      <p className="whitespace-pre-wrap break-words">
-                        {message.body || (message.hasMedia ? "Archivo multimedia" : "Mensaje no textual")}
-                      </p>
+                      {!!message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
+                      {isMedia ? (
+                        <div className="mt-1.5 space-y-2">
+                          {!opened && <button type="button"
+                            onClick={() => {setOpenMediaId(message.id);setMediaErrorId(null);}}
+                            className="flex min-h-10 items-center gap-2 rounded-lg border border-current/20 px-3 py-2 text-left text-xs font-semibold">
+                            {audio ? <Mic className="size-4"/> :
+                              image ? <ImageIcon className="size-4"/> :
+                              video ? <Film className="size-4"/> :
+                              <FileText className="size-4"/>}
+                            {audio ? "Reproducir audio" : image ? "Ver imagen" :
+                              video ? "Reproducir video" : "Abrir archivo"}
+                            <Play className="size-3.5"/>
+                          </button>}
+                          {opened && audio && <audio key={source} controls autoPlay preload="none"
+                            className="h-12 w-full max-w-64" src={source}
+                            onError={() => setMediaErrorId(message.id)}>
+                            Tu navegador no admite este audio.
+                          </audio>}
+                          {opened && image && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={source} alt="Imagen adjunta de WhatsApp"
+                              className="max-h-72 max-w-full cursor-zoom-in rounded-lg object-contain"
+                              onClick={() => setImageViewer(source)}
+                              onError={() => setMediaErrorId(message.id)}/>
+                          )}
+                          {opened && video && <video controls playsInline preload="none"
+                            className="max-h-72 max-w-full rounded-lg" src={source}
+                            onError={() => setMediaErrorId(message.id)}/>}
+                          {opened && !audio && !image && !video && (
+                            <a href={source} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 rounded-lg border border-current/20 px-3 py-2 text-xs font-semibold">
+                              <Download className="size-4"/> Abrir o descargar archivo
+                            </a>
+                          )}
+                          {mediaErrorId === message.id &&
+                            <p role="alert" className="text-xs text-amber-600 dark:text-amber-300">
+                              WhatsApp Web todavía no pudo recuperar este archivo.
+                            </p>}
+                        </div>
+                      ) : !message.body && (
+                        <p className="text-xs opacity-75">Contenido no sincronizado</p>
+                      )}
                       <p className="mt-1 text-right text-[10px] opacity-70">{ts(message.timestamp)}</p>
                     </div>
-                  </div>)}
+                  </div>;
+                })}
               </div>
             </div>
+            {imageViewer && (
+              <div role="dialog" aria-modal="true" aria-label="Imagen ampliada"
+                className="fixed inset-0 z-[90] flex flex-col items-center justify-center bg-black/95 p-4"
+                onClick={() => setImageViewer(null)}>
+                <button type="button" aria-label="Cerrar imagen"
+                  className="absolute right-4 top-4 grid size-10 place-items-center rounded-full bg-white/15 text-white"
+                  onClick={() => setImageViewer(null)}><X className="size-5"/></button>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imageViewer} alt="Imagen ampliada de WhatsApp"
+                  onClick={e => e.stopPropagation()}
+                  className="max-h-[88dvh] max-w-full object-contain"/>
+              </div>
+            )}
             <form onSubmit={e=>{e.preventDefault();void sendMessage();}}
               className="flex shrink-0 items-end gap-2 border-t border-border bg-card p-2.5">
               <textarea rows={1} maxLength={4000} value={draft} onChange={e=>setDraft(e.target.value)}
