@@ -51,3 +51,45 @@ jobs:
 
       - name: Build
         run: npm run build
+
+
+  android_apk:
+    name: APK Android Valle Automotores
+    if: github.event_name == 'pull_request' && github.head_ref == 'build/android-apk-installable-20261122'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Localizar herramientas Android
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -x "$SDKMANAGER"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Licencias y SDK Android
+        run: |
+          { yes || true; } | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Compilar APK
+        run: gradle -p android-app :app:assembleDebug --no-daemon --stacktrace
+      - name: Preparar integridad APK
+        run: |
+          cd android-app/app/build/outputs/apk/debug
+          sha256sum app-debug.apk > app-debug.apk.sha256
+          ls -lh app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Valle-Automotores-CRM-Android-APK
+          path: |
+            android-app/app/build/outputs/apk/debug/app-debug.apk
+            android-app/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
