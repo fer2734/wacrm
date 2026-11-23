@@ -39,8 +39,7 @@ function builtInQuestion(s, b) {
   case 'cc_other':return 'Indicá la cilindrada que estás buscando.';
   case 'capital':return '¿Tenés capital para una entrega?\n'+lines(['SÍ','NO']);
   case 'capital_amount':return '¿Con cuánto dinero contás para la entrega? Escribí el importe aproximado.';
-  case 'operation':return '¿Buscás financiación o compra directa?\n'+lines(['FINANCIACIÓN','COMPRA DIRECTA']);
-  case 'quota':return '¿Qué cuota mensual podrías pagar por mes?';
+  case 'quota':return 'Para financiación, ¿qué cuota te queda cómoda?';
   case 'quota_other':return '¿Qué importe mensual te gustaría pagar?';
   case 'name':return '¿Cuál es tu nombre?';
   case 'locality':return '¿De qué localidad sos?';
@@ -66,9 +65,8 @@ function advance(s,b,value) {
   b.step='capital';break;
  }
  case 'cc_other':b.cc=v;b.step='capital';break;
- case 'capital':{const x=pick(['SÍ','NO']);if(!x)return false;b.capital=x;b.step=x==='SÍ'?'capital_amount':'operation';break;}
- case 'capital_amount':b.capitalAmount=v;b.step='operation';break;
- case 'operation':{const x=pick(['FINANCIACIÓN','COMPRA DIRECTA']);if(!x)return false;b.operation=x;b.step=x==='FINANCIACIÓN'?'quota':'name';break;}
+ case 'capital':{const x=pick(['SÍ','NO']);if(!x)return false;b.capital=x;b.step=x==='SÍ'?'capital_amount':'quota';break;}
+ case 'capital_amount':b.capitalAmount=v;b.step='quota';break;
  case 'quota':b.quota=v;b.step='name';break;
  case 'quota_other':b.quota=v;b.step='name';break;
  case 'name':b.name=v;b.step='locality';break;
