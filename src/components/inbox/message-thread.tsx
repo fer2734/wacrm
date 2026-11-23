@@ -4,6 +4,8 @@ import {useContactAliases} from "@/hooks/use-contact-aliases";
 import {es} from "date-fns/locale";
 import { ConversationStage } from "./conversation-stage";
 import { ConversationNotes } from "./conversation-notes";
+import { BotIntakeSummary } from "./bot-intake-summary";
+import { TaskEditor } from "@/components/agenda/task-editor";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -34,6 +36,7 @@ import {
   PanelRightClose,
   Copy,
   Pencil,
+  CalendarPlus,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -200,6 +203,9 @@ export function MessageThread({
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const [notesEditSignal, setNotesEditSignal] = useState(0);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [agendaOpen, setAgendaOpen] = useState(false);
+  useEffect(() => { setSummaryExpanded(false); setAgendaOpen(false); }, [conversation?.id]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const [olderPages, setOlderPages] = useState<{
@@ -1019,11 +1025,20 @@ export function MessageThread({
             {displayName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <button type="button" onClick={() => setNotesEditSignal(n => n + 1)}
-              title="Agregar nota a este cliente"
-              className="flex min-w-0 items-center gap-1 text-left text-sm font-semibold text-foreground hover:text-primary">
-              <span className="truncate">{displayName}</span><Pencil className="size-3 shrink-0" />
-            </button>
+            <div className="flex min-w-0 items-center gap-1">
+              <button type="button" onClick={() => setSummaryExpanded(v => !v)}
+                aria-expanded={summaryExpanded} aria-label="Ver u ocultar resumen inicial del filtro del cliente"
+                title="Ver resumen inicial del filtro del bot"
+                className="flex min-w-0 items-center gap-1 text-left text-sm font-bold text-foreground hover:text-primary">
+                <span className="truncate">{displayName}</span>
+                <ChevronDown className={cn("size-4 shrink-0 text-primary transition-transform", summaryExpanded && "rotate-180")} />
+              </button>
+              <button type="button" onClick={() => setNotesEditSignal(n => n + 1)}
+                aria-label="Agregar nota del cliente" title="Agregar nota"
+                className="flex size-7 shrink-0 items-center justify-center rounded-md text-primary hover:bg-muted">
+                <Pencil className="size-3.5" />
+              </button>
+            </div>
             <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
               <span className="truncate">{contactHandle(contact)}</span>
               {phoneNumber && <button type="button" className="inline-flex size-7 shrink-0 items-center justify-center rounded text-primary hover:bg-muted"
@@ -1047,7 +1062,14 @@ export function MessageThread({
           </Badge>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button type="button" onClick={() => setAgendaOpen(true)}
+            aria-label="Agendar seguimiento para este cliente"
+            title="Agendar llamada, entrevista o seguimiento"
+            className="inline-flex min-h-10 min-w-10 items-center justify-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2 text-primary hover:bg-primary/20">
+            <CalendarPlus className="size-4" />
+            <span className="hidden text-xs font-semibold sm:inline">Agendar</span>
+          </button>
           {/* Contact-panel toggle — desktop only. The contact sidebar
               eats a chunk of horizontal width that crowds the thread on
               smaller laptops; this lets agents reclaim it when they just
@@ -1164,6 +1186,9 @@ export function MessageThread({
         </div>
       </div>
 
+      {summaryExpanded && <BotIntakeSummary key={conversation.id} conversationId={conversation.id} />}
+      <TaskEditor open={agendaOpen} onOpenChange={setAgendaOpen}
+        contact={{ id: contact.id, name: displayName, phone: phoneNumber }} />
       <ConversationStage key={conversation.id} conversationId={conversation.id} />
       <ConversationNotes key={contact.id} contactId={contact.id} editSignal={notesEditSignal} />
 
