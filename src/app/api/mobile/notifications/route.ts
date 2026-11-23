@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
     const events: MobileEvent[] = [];
 
     const assignments = await db.from("notifications")
-      .select("id,created_at,conversation_id")
+      .select("id,created_at,conversation_id,type,title,body")
       .eq("user_id", user.id).eq("account_id", profile.account_id)
       .gt("created_at", after).lte("created_at", before)
       .order("created_at", { ascending: true }).limit(40);
@@ -50,9 +50,9 @@ export async function GET(request: NextRequest) {
     for (const item of assignments.data || []) {
       events.push({
         id: "a:" + item.id, kind: "assignment",
-        title: "Conversación asignada",
-        body: "Tenés una conversación nueva para atender.",
-        href: item.conversation_id ? "/inbox?c=" + encodeURIComponent(item.conversation_id) : "/notifications",
+        title: item.type === "private_lead" ? "Nuevo cliente privado" : "Conversación asignada",
+        body: item.type === "private_lead" ? (item.body || "Se completó una consulta en tu WhatsApp privado.") : "Tenés una conversación nueva para atender.",
+        href: item.type === "private_lead" ? "/private-whatsapp" : item.conversation_id ? "/inbox?c=" + encodeURIComponent(item.conversation_id) : "/notifications",
         time: item.created_at,
       });
     }
