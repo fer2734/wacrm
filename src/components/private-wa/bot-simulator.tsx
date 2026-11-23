@@ -11,10 +11,10 @@ type BotConfig = {
 };
 type Step =
   | "vehicle" | "brand" | "brand_other" | "model" | "model_other"
-  | "cc" | "cc_other" | "capital" | "capital_amount" | "operation"
+  | "cc" | "cc_other" | "year" | "capital" | "capital_amount" | "operation"
   | "quota" | "quota_other" | "name" | "locality" | "completed";
 type Fields = {
-  vehicle?: string; brand?: string; model?: string; cc?: string;
+  vehicle?: string; brand?: string; model?: string; year?: string; cc?: string;
   capital?: string; capitalAmount?: string; operation?: string;
   quota?: string; name?: string; locality?: string;
 };
@@ -29,6 +29,7 @@ const defaults: Record<string, string[]> = {
   Corven: ["Energy 110", "Triax 150", "Hunter 150"],
   Keller: ["KN110-8", "Stratus 150"],
   Mondial: ["LD 110 Max", "RD 150"],
+  Yamaha: [], Bajaj: [], Suzuki: [], Kawasaki: [], KTM: [], Benelli: [], Hero: [], "Royal Enfield": [], CFMoto: [], TVS: [], Beta: [], Voge: [],
 };
 const motorcycles = ["110 cc", "125 cc", "150 cc", "200 cc", "250 cc", "300 cc o más", "OTRA"];
 const choose = (value: string, options: string[]) => {
@@ -41,13 +42,12 @@ function optionsFor(step: Step, fields: Fields, cfg: BotConfig): string[] {
   const brands = cfg.brands || defaults;
   switch (step) {
     case "vehicle": return ["MOTO", "AUTO", "CAMIONETA"];
-    case "brand": return fields.vehicle === "MOTO" ? [...Object.keys(brands).slice(0, 9), "OTRA"] : [];
-    case "model": return fields.vehicle === "MOTO" && fields.brand && brands[fields.brand]
-      ? [...brands[fields.brand].slice(0, 9), "OTRA"] : [];
+    case "brand": return fields.vehicle === "MOTO" ? [...Object.keys(brands).slice(0, 22), "OTRA"] : [];
+
     case "cc": return fields.vehicle === "MOTO" ? motorcycles : [];
     case "capital": return ["SÍ", "NO"];
     case "operation": return ["FINANCIACIÓN", "COMPRA DIRECTA"];
-    case "quota": return fields.vehicle === "MOTO" ? ["$300.000", "$500.000", "MÁS"] : [];
+
     default: return [];
   }
 }
@@ -56,14 +56,15 @@ function question(step: Step, fields: Fields, cfg: BotConfig): string {
     vehicle: cfg.welcome || "¡Bienvenido/a a Valle Automotores! Estamos en General Roca, Río Negro. ¿Qué estás buscando?",
     brand: fields.vehicle === "MOTO" ? "¿Qué marca de moto buscás?" : "¿Qué marca buscás? Podés escribir OTRA.",
     brand_other: "¿Qué otra marca buscás?",
-    model: fields.vehicle === "MOTO" ? "¿Qué modelo de " + (fields.brand || "moto") + " buscás?" : "¿Qué modelo buscás?",
+    model: "¿Qué modelo buscás?",
+    year: "¿De qué años aproximadamente lo buscás?",
     model_other: "¿Qué otro modelo te interesa?",
-    cc: fields.vehicle === "MOTO" ? "¿Qué cilindrada preferís?" : "¿Qué cilindrada o motorización buscás? Si no sabés, respondé Indistinto.",
+    cc: "¿Qué cilindrada preferís?",
     cc_other: "Indicá la cilindrada que estás buscando.",
     capital: "¿Tenés capital para una entrega?",
     capital_amount: "¿Con cuánto dinero contás para la entrega? Escribí el importe aproximado.",
     operation: "¿Buscás financiación o compra directa?",
-    quota: fields.vehicle === "MOTO" ? "¿Qué cuota mensual te gustaría pagar?" : "¿Qué cuota mensual te gustaría pagar? Indicá el importe, sin mínimo preestablecido.",
+    quota: "¿Qué cuota mensual podrías pagar por mes?",
     quota_other: "¿Qué importe mensual te gustaría pagar?",
     name: "¿Cuál es tu nombre?",
     locality: "¿De qué localidad sos?",
@@ -82,11 +83,10 @@ function next(step: Step, fields: Fields, value: string, cfg: BotConfig): { step
     case "vehicle": f.vehicle = picked; return { step: "brand", fields: f };
     case "brand":
       if (picked === "OTRA" && f.vehicle === "MOTO") return { step: "brand_other", fields: f };
-      f.brand = picked; return { step: "model", fields: f };
-    case "brand_other": f.brand = picked; return { step: "model_other", fields: f };
-    case "model":
-      if (picked === "OTRA" && f.vehicle === "MOTO") return { step: "model_other", fields: f };
-      f.model = picked; return { step: "cc", fields: f };
+      f.brand = picked; return { step: f.vehicle === "MOTO" ? "cc" : "model", fields: f };
+    case "brand_other": f.brand = picked; return { step: "cc", fields: f };
+    case "model": f.model = picked; return { step: "year", fields: f };
+    case "year": f.year = picked; return { step: "capital", fields: f };
     case "model_other": f.model = picked; return { step: "cc", fields: f };
     case "cc":
       if (picked === "OTRA" && f.vehicle === "MOTO") return { step: "cc_other", fields: f };
@@ -95,9 +95,7 @@ function next(step: Step, fields: Fields, value: string, cfg: BotConfig): { step
     case "capital": f.capital = picked; return { step: picked === "SÍ" ? "capital_amount" : "operation", fields: f };
     case "capital_amount": f.capitalAmount = picked; return { step: "operation", fields: f };
     case "operation": f.operation = picked; return { step: picked === "FINANCIACIÓN" ? "quota" : "name", fields: f };
-    case "quota":
-      if (picked === "MÁS" && f.vehicle === "MOTO") return { step: "quota_other", fields: f };
-      f.quota = picked; return { step: "name", fields: f };
+    case "quota": f.quota = picked; return { step: "name", fields: f };
     case "quota_other": f.quota = picked; return { step: "name", fields: f };
     case "name": f.name = picked; return { step: "locality", fields: f };
     case "locality": f.locality = picked; return { step: "completed", fields: f };
@@ -158,7 +156,7 @@ export function PrivateBotSimulator({ config }: { config: BotConfig }) {
           {Object.entries({
             "Nombre": session.fields.name, "Localidad": session.fields.locality,
             "Vehículo": session.fields.vehicle, "Marca": session.fields.brand,
-            "Modelo": session.fields.model, "Cilindrada": session.fields.cc,
+            ...(session.fields.vehicle === "MOTO" ? { "Cilindrada": session.fields.cc } : { "Modelo": session.fields.model, "Años aproximados": session.fields.year }),
             "Tiene entrega": session.fields.capital, "Capital disponible": session.fields.capitalAmount,
             "Operación": session.fields.operation, "Cuota deseada": session.fields.quota,
           }).map(([label, value]) => <p key={label}><strong>{label}:</strong> {value || "No indicó"}</p>)}
