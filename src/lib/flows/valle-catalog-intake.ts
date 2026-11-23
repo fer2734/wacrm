@@ -20,7 +20,7 @@ buttons("vehiculo", "¡Bienvenido/a a Valle Automotores! Estamos en General Roca
 
 const motoMarcas = ["Honda","Motomel","Gilera","Zanella","Corven","Keller","Mondial","Yamaha","Bajaj","Suzuki","Kawasaki","KTM","Benelli","Hero","Royal Enfield","CFMoto","TVS","Beta","Voge"];
 // Un menú de texto admite más marcas que la lista interactiva de WhatsApp (máximo 10 filas).
-text("marcas_moto", "¿Qué marca de moto buscás? Respondé con el nombre o el número:\\n" + [...motoMarcas, "OTRA"].map((b, i) => `${i + 1}. ${b}`).join("\\n"), "marca", "cilindrada_moto");
+text("marcas_moto", "¿Qué marca de moto buscás? Escribí la marca (por ejemplo: " + motoMarcas.join(", ") + ") o respondé OTRA.", "marca", "cilindrada_moto");
 list("cilindrada_moto", "¿Qué cilindrada preferís?", [
   { id: "110", title: "110 cc", next: "capital" },
   { id: "125", title: "125 cc", next: "capital" },
