@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { Bell, CheckCircle2, Loader2, RefreshCw, ShieldCheck, Smartphone, Wifi, WifiOff } from "lucide-react";
 import { toast } from "sonner";
+import { PrivateBotSimulator } from "@/components/private-wa/bot-simulator";
 
 type Lead = { id: string; name: string; phone: string; locality: string; summary: Record<string, string | null>; created_at: string; read_at: string | null };
 type Status = { status?: string; qr?: string | null; code?: string; error?: string; configured?: boolean };
@@ -137,6 +138,7 @@ export default function PrivateWhatsappPage() {
   return <div className="mx-auto max-w-5xl space-y-5 pb-16">
     <div><h1 className="text-2xl font-bold text-foreground">📲 Mi WhatsApp privado</h1>
       <p className="mt-1 text-sm text-muted-foreground">Segunda bandeja independiente del número principal. Solo se incorporan consultas nuevas y filtradas por el bot.</p></div>
+    <PrivateBotSimulator config={config}/>
     <div className={row}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 font-semibold"><Smartphone className="size-5" /> Mi conexión</div>
