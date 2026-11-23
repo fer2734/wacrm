@@ -95,17 +95,23 @@ http.createServer(async(req,res)=>{
   if(!m||!uuid.test(m[1]))return reply(res,404,{error:'Not found'});
   const [userId,action]=m.slice(1),body=req.method==='POST'?await read(req):{};
   let s=sessions.get(userId);
-  if(action==='start'&&req.method==='POST'){
+  if((action==='start'||action==='pair')&&req.method==='POST'){
    if(!uuid.test(body.accountId||''))return reply(res,400,{error:'Invalid account'});
    if(!s){s=await load(userId,body.accountId,body.config);sessions.set(userId,s);}
    if(s.accountId!==body.accountId)return reply(res,403,{error:'Wrong account'});
    if(body.config)s.config=body.config;
    await persist(s);if(!s.socket)await connect(s);
-  }else if(!s)return reply(res,404,{error:'No session'});
+  }else if(!s && action==='status')return reply(res,200,{status:'not_connected',qr:null});
+  else if(!s)return reply(res,404,{error:'No session. Primero iniciá la conexión.'});
   if(action==='pair'&&req.method==='POST'){
    const phone=String(body.phone||'').replace(/\D/g,'');
-   if(!s.socket||!s.pairingReady||s.status==='connected')return reply(res,409,{error:'Primero generá el QR y esperá a que esté listo'});
    if(!/^\d{10,15}$/.test(phone))return reply(res,400,{error:'Número internacional inválido'});
+   if(s.status==='connected')return reply(res,409,{error:'Este WhatsApp ya está conectado'});
+   // Pairing code is available after Baileys delivers its first QR.
+   // A code request can be the first action, with no prior QR click.
+   for(let attempt=0;attempt<18 && !s.pairingReady;attempt++)
+     await new Promise(resolve=>setTimeout(resolve,500));
+   if(!s.socket||!s.pairingReady)return reply(res,503,{error:'La sesión todavía se está iniciando. Probá nuevamente en unos segundos.'});
    const code=await s.socket.requestPairingCode(phone);
    return reply(res,200,{code,status:s.status});
   }
