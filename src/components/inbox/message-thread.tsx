@@ -1004,11 +1004,11 @@ export function MessageThread({
     // clipped and the hover toolbar overlaps the Tags panel. Letting the
     // root shrink lets the bubbles' break-words / max-w caps apply.
     // Issue #257.
-    <div className={cn("flex min-w-0 flex-1 flex-col", DOODLE_BG_CLASSES)}>
+    <div className={cn("flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden", DOODLE_BG_CLASSES)}>
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
-      <div className="flex items-center justify-between gap-2 border-b border-border bg-card px-3 py-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+      <div className="z-20 flex shrink-0 items-center justify-between gap-1 border-b border-border bg-card px-2 py-1.5 sm:gap-2 sm:px-4 sm:py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
           {onBack && (
@@ -1016,12 +1016,12 @@ export function MessageThread({
               type="button"
               onClick={onBack}
               aria-label={t("backToConversations")}
-              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground lg:hidden"
+              className="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-muted lg:hidden"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
           )}
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground">
+          <div className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground sm:flex">
             {displayName.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
@@ -1029,19 +1029,19 @@ export function MessageThread({
               <button type="button" onClick={() => setSummaryExpanded(v => !v)}
                 aria-expanded={summaryExpanded} aria-label="Ver u ocultar resumen inicial del filtro del cliente"
                 title="Ver resumen inicial del filtro del bot"
-                className="flex min-w-0 items-center gap-1 text-left text-sm font-bold text-foreground hover:text-primary">
-                <span className="truncate">{displayName}</span>
+                className="flex min-w-0 flex-1 items-center gap-0.5 text-left text-xs font-bold leading-tight text-foreground hover:text-primary sm:text-sm">
+                <span className="min-w-0 break-words [overflow-wrap:anywhere] line-clamp-2 sm:truncate">{displayName}</span>
                 <ChevronDown className={cn("size-4 shrink-0 text-primary transition-transform", summaryExpanded && "rotate-180")} />
               </button>
               <button type="button" onClick={() => setNotesEditSignal(n => n + 1)}
                 aria-label="Agregar nota del cliente" title="Agregar nota"
-                className="flex size-7 shrink-0 items-center justify-center rounded-md text-primary hover:bg-muted">
+                className="hidden size-7 shrink-0 items-center justify-center rounded-md text-primary hover:bg-muted sm:flex">
                 <Pencil className="size-3.5" />
               </button>
             </div>
-            <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-              <span className="truncate">{contactHandle(contact)}</span>
-              {phoneNumber && <button type="button" className="inline-flex size-7 shrink-0 items-center justify-center rounded text-primary hover:bg-muted"
+            <div className="flex min-w-0 items-center gap-0.5 text-[11px] leading-tight text-muted-foreground sm:gap-1 sm:text-xs">
+              <span className="min-w-0 truncate" title={contactHandle(contact)}>{contactHandle(contact)}</span>
+              {phoneNumber && <button type="button" className="inline-flex size-6 shrink-0 items-center justify-center rounded text-primary hover:bg-muted sm:size-7"
                 aria-label="Copiar teléfono" title="Copiar teléfono"
                 onClick={() => void navigator.clipboard.writeText(phoneNumber).then(() => toast.success("Teléfono copiado")).catch(() => toast.error("No se pudo copiar el teléfono"))}>
                 <Copy className="size-3.5" />
@@ -1062,11 +1062,11 @@ export function MessageThread({
           </Badge>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
           <button type="button" onClick={() => setAgendaOpen(true)}
             aria-label="Agendar seguimiento para este cliente"
             title="Agendar llamada, entrevista o seguimiento"
-            className="inline-flex min-h-10 min-w-10 items-center justify-center gap-1 rounded-lg border border-primary/30 bg-primary/10 px-2 text-primary hover:bg-primary/20">
+            className="inline-flex size-9 shrink-0 items-center justify-center gap-1 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 sm:h-10 sm:w-auto sm:px-2">
             <CalendarPlus className="size-4" />
             <span className="hidden text-xs font-semibold sm:inline">Agendar</span>
           </button>
@@ -1110,7 +1110,7 @@ export function MessageThread({
               aria-label={t("refreshConversation")}
               title={t("refresh")}
               className={cn(
-                "inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60",
+                "hidden h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60 sm:inline-flex",
               )}
             >
               <RefreshCw
@@ -1123,7 +1123,7 @@ export function MessageThread({
           {canManageMembers && <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
-                "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                "inline-flex h-8 items-center justify-center gap-0.5 rounded-md px-1 text-xs hover:bg-muted sm:h-7 sm:gap-1 sm:px-2",
                 assignedAgentId ? "text-primary" : "text-muted-foreground"
               )}
             >
@@ -1193,7 +1193,7 @@ export function MessageThread({
       <ConversationNotes key={contact.id} contactId={contact.id} editSignal={notesEditSignal} />
 
       {/* Messages Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2 sm:px-4 sm:py-4">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -1297,7 +1297,7 @@ export function MessageThread({
       />
 
       {/* Messaging from CRM is disabled for this personal-number workflow. */}
-      {USE_PERSONAL_WHATSAPP_ONLY || (isAgent && assignedAgentId) ? <div className="border-t border-border bg-card px-3 py-2 text-center"><p className="mb-1 text-xs text-muted-foreground">Respondé desde tu WhatsApp y guardá las novedades en las notas.</p>{phoneNumber && <a href={`https://wa.me/${phoneNumber.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground">Abrir en mi WhatsApp</a>}</div> : <MessageComposer
+      {USE_PERSONAL_WHATSAPP_ONLY || (isAgent && assignedAgentId) ? <div className="z-20 flex shrink-0 items-center justify-center gap-2 border-t border-border bg-card px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] text-center sm:px-3 sm:py-2"><p className="hidden text-xs text-muted-foreground sm:block">Respondé desde tu WhatsApp y guardá las novedades en las notas.</p>{phoneNumber && <a href={`https://wa.me/${phoneNumber.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground sm:w-auto sm:text-sm">Abrir en mi WhatsApp</a>}</div> : <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
         onSend={handleSend}
