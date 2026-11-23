@@ -1143,9 +1143,18 @@ async function handleReplyForActiveRun(
   }
 
   if (matched) {
-    if (!(await claimReplyTransition(db, run, matched))) {
+    // Optional catalog intake: retain the selected label for the advisor summary.
+    // Only supported on explicitly configured interactive nodes.
+    const captureKey = currentNode.config.save_var_key;
+    const picked = message.kind === "interactive_reply" ? message.reply_title : "";
+    const capture = typeof captureKey === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(captureKey) &&
+      typeof picked === "string" && picked.trim() !== ""
+      ? { vars: { ...run.vars, [captureKey]: picked.trim().slice(0, 120) } }
+      : undefined;
+    if (!(await claimReplyTransition(db, run, matched, capture))) {
       return lostReplyRace(db, run, currentNode.node_key);
     }
+    if (capture) run.vars = capture.vars;
     const outcome = await advanceFromNodeKey(db, run, matched, nodes);
     return {
       consumed: true,
