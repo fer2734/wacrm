@@ -16,6 +16,7 @@ export function ConversationNotes({ contactId, editSignal = 0 }: { contactId: st
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [mobileExpanded, setMobileExpanded] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const previousEditSignal = useRef(editSignal);
 
@@ -53,6 +54,7 @@ export function ConversationNotes({ contactId, editSignal = 0 }: { contactId: st
       setEditingId(null);
       setDraft("");
       setAdding(true);
+      setMobileExpanded(true);
     }
     previousEditSignal.current = editSignal;
   }, [editSignal]);
@@ -65,12 +67,14 @@ export function ConversationNotes({ contactId, editSignal = 0 }: { contactId: st
     setDraft("");
     setEditingId(null);
     setAdding(true);
+    setMobileExpanded(true);
   }
 
   function editNote(note: ContactNote) {
     setDraft(note.note_text);
     setAdding(false);
     setEditingId(note.id);
+    setMobileExpanded(true);
   }
 
   function cancel() {
@@ -115,24 +119,29 @@ export function ConversationNotes({ contactId, editSignal = 0 }: { contactId: st
   const formOpen = adding || editingId !== null;
 
   return (
-    <section className="shrink-0 border-b border-border bg-card px-3 py-2" aria-label="Notas de seguimiento">
+    <section className="shrink-0 border-b border-border bg-card px-2 py-1.5 sm:px-3 sm:py-2" aria-label="Notas de seguimiento">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-foreground">
-          <StickyNote className="size-3.5 shrink-0 text-primary" /> Notas de seguimiento
-        </h3>
-        <div className="flex shrink-0 items-center gap-2">
+        <button type="button" onClick={() => setMobileExpanded(x => !x)}
+          aria-expanded={mobileExpanded} aria-label="Mostrar u ocultar notas del cliente"
+          className="flex min-w-0 items-center gap-1.5 text-left text-[11px] font-semibold text-foreground sm:pointer-events-none sm:text-xs">
+          <StickyNote className="size-3.5 shrink-0 text-primary" />
+          <span className="sm:hidden">Notas ({notes.length}) {mobileExpanded ? "▴" : "▾"}</span>
+          <span className="hidden sm:inline">Notas de seguimiento</span>
+        </button>
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {notes.length > 1 && (
             <button type="button" onClick={() => setShowAll(v => !v)}
-              className="text-[11px] font-medium text-primary underline">
+              className="hidden text-[11px] font-medium text-primary underline sm:inline">
               {showAll ? "Ver menos" : "Ver todas (" + notes.length + ")"}
             </button>
           )}
           <button type="button" onClick={newNote}
-            className="inline-flex min-h-8 items-center gap-1 rounded-md border border-border px-2 text-xs font-medium hover:bg-muted">
+            className="inline-flex min-h-8 items-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium hover:bg-muted sm:text-xs">
             <Plus className="size-3.5" /> Nueva
           </button>
         </div>
       </div>
+      <div className={mobileExpanded || formOpen ? "block" : "hidden sm:block"}>
       {loading ? (
         <p className="mt-1 text-xs text-muted-foreground">Cargando notas...</p>
       ) : notes.length === 0 && !formOpen ? (
@@ -178,6 +187,7 @@ export function ConversationNotes({ contactId, editSignal = 0 }: { contactId: st
           </div>
         </div>
       )}
+      </div>
     </section>
   );
 }
