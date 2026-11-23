@@ -23,7 +23,6 @@ const labels: Array<[string, string]> = [
   ["usado", "Usado para entregar"],
   ["initial_message", "Mensaje inicial"],
 ];
-const relevant = new Set(labels.map(([key]) => key));
 
 export function BotIntakeSummary({ conversationId }: { conversationId: string }) {
   const [vars, setVars] = useState<SummaryFields | null>(null);
@@ -36,15 +35,10 @@ export function BotIntakeSummary({ conversationId }: { conversationId: string })
       setLoading(true);
       setError(false);
       const { data, error: fetchError } = await createClient()
-        .from("flow_runs")
-        .select("vars")
-        .eq("conversation_id", conversationId)
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .rpc("get_conversation_intake_summary", { p_conversation_id: conversationId });
       if (!active) return;
       setError(!!fetchError);
-      setVars(data?.vars && typeof data.vars === "object" ? data.vars as SummaryFields : {});
+      setVars(data && typeof data === "object" && !Array.isArray(data) ? data as SummaryFields : {});
       setLoading(false);
     };
     void load();
@@ -52,7 +46,7 @@ export function BotIntakeSummary({ conversationId }: { conversationId: string })
   }, [conversationId]);
 
   const rows = labels
-    .filter(([key]) => relevant.has(key) && typeof vars?.[key] === "string" && String(vars[key]).trim().length > 0)
+    .filter(([key]) => typeof vars?.[key] === "string" && String(vars[key]).trim().length > 0)
     .map(([key, label]) => ({ key, label, value: String(vars?.[key]).slice(0, 600) }));
 
   return (
