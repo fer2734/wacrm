@@ -34,7 +34,7 @@ async function load(userId,accountId,configuration){
 async function callback(s,jid,b){
  const body=JSON.stringify({accountId:s.accountId,userId:s.userId,chatId:jid,
  phone:jid.split('@')[0],name:b.name||'',locality:b.locality||'',
- summary:{vehicle:b.vehicle,brand:b.brand,model:b.model,cc:b.cc,capital:b.capital,
+ summary:{vehicle:b.vehicle,brand:b.brand,model:b.model||null,year:b.year||null,cc:b.cc||null,capital:b.capital,
  capitalAmount:b.capitalAmount||null,operation:b.operation,quota:b.quota||null}});
  const hash=crypto.createHmac('sha256',callbackSecret).update(body).digest('hex');
  const res=await fetch(callbackURL,{method:'POST',headers:{'content-type':'application/json','x-valle-signature':hash},
