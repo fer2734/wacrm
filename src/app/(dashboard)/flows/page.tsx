@@ -84,7 +84,7 @@ const TEMPLATE_ICONS = {
 
 export default function FlowsPage() {
   const router = useRouter();
-  const canCreate = useCan("send-messages");
+  const canCreate = useCan("edit-settings");
   const t = useTranslations("Flows.list");
   const tGate = useTranslations("GatedButton");
   const [flows, setFlows] = useState<FlowRow[]>([]);
