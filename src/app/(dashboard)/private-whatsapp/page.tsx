@@ -109,7 +109,9 @@ export default function PrivateWhatsappPage() {
       }, { onConflict: "account_id" });
       if (error) throw error;
       setConfig(next);
-      toast.success("Configuración guardada. Se aplicará a las nuevas conexiones.");
+      // Reenvía las preferencias a una sesión ya vinculada, sin reiniciar WhatsApp.
+      void fetch("/api/private-wa/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "start" }) }).catch(() => {});
+      toast.success("Configuración guardada para nuevas consultas.");
     } catch (err) { toast.error(err instanceof Error ? err.message : "No se pudo guardar"); }
     finally { setSaving(false); }
   }
