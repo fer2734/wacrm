@@ -55,9 +55,9 @@ export function ConversationStage({ conversationId }: { conversationId: string }
   }
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-border bg-card px-3 py-2.5">
-      <label htmlFor={`sales-stage-${conversationId}`} className="flex items-center gap-2 text-sm font-semibold text-foreground">
-        <GitBranch className="size-4 text-primary" />{t("stage")}
+    <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-2 py-1.5 sm:flex-wrap sm:justify-center sm:px-3 sm:py-2.5">
+      <label htmlFor={`sales-stage-${conversationId}`} className="flex shrink-0 items-center gap-1 text-[11px] font-semibold text-foreground sm:gap-2 sm:text-sm">
+        <GitBranch className="size-3.5 text-primary sm:size-4" /><span className="sm:hidden">Etapa</span><span className="hidden sm:inline">{t("stage")}</span>
       </label>
       {(loading || saving) && <Loader2 className="size-4 animate-spin" aria-label={t("saving")} />}
       <select
@@ -65,7 +65,7 @@ export function ConversationStage({ conversationId }: { conversationId: string }
         value={stageId}
         disabled={loading || saving || failed || stages.length === 0}
         onChange={(event) => void changeStage(event.target.value)}
-        className="h-9 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:w-64"
+        className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:h-9 sm:w-64 sm:flex-none sm:px-3 sm:text-sm"
       >
         {!stageId && <option value="" disabled>{loading ? t("loading") : t("chooseStage")}</option>}
         {stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
