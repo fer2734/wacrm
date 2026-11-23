@@ -277,7 +277,7 @@ function MessageContent({
             <p
               className={cn(
                 "mt-1 break-words text-[11px]",
-                isAgent ? "text-primary-foreground/70" : "text-muted-foreground",
+                isAgent ? "text-primary-foreground/90" : "text-slate-600 dark:text-slate-300",
               )}
             >
               {view.footer}
@@ -397,10 +397,12 @@ export function MessageBubble({
     >
       <div
         className={cn(
-          "relative rounded-2xl px-3 py-2",
+          // Contrasting message surfaces and borders keep every bubble readable
+          // above the patterned chat background in both light and dark themes.
+          "relative rounded-2xl border px-3.5 py-2.5 shadow-sm",
           isAgent
-            ? "rounded-br-md bg-primary text-primary-foreground"
-            : "rounded-bl-md bg-muted text-foreground",
+            ? "rounded-br-md border-primary/50 bg-primary text-primary-foreground shadow-primary/10"
+            : "rounded-bl-md border-slate-300 bg-white text-slate-950 shadow-slate-900/10 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-50",
         )}
       >
         {reply && (
