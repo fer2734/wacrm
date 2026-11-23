@@ -2,60 +2,51 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advance, question } from './intake.mjs';
 const session = { config: {} };
-function play(answers) {
-  const b={step:'vehicle'};
-  for(const input of answers) assert.equal(advance(session,b,input),true,`Se rechazó ${input} en ${b.step}`);
-  return b;
+function play(answers, custom=session) {
+ const b={step:'vehicle'};
+ for(const input of answers) assert.equal(advance(custom,b,input),true,`Se rechazó ${input} en ${b.step}`);
+ return b;
 }
-test('bienvenida exige elegir entre tres vehículos',()=>{
-  const b={step:'vehicle'};
-  assert.match(question(session,b),/General Roca/);
-  assert.match(question(session,b),/1\. MOTO/);
-  assert.match(question(session,b),/2\. AUTO/);
-  assert.match(question(session,b),/3\. CAMIONETA/);
-  assert.equal(advance(session,b,'barco'),false);
-  assert.equal(b.step,'vehicle');
+test('solo tres opciones iniciales',()=>{
+ const b={step:'vehicle'};
+ assert.match(question(session,b),/General Roca/);
+ assert.match(question(session,b),/1\. MOTO/);
+ assert.equal(advance(session,b,'barco'),false);
 });
-test('moto Honda, capital, financiación, cuota fija, nombre y localidad',()=>{
-  const b=play(['1','1','1','1','1','400000','1','1','Laura','General Roca']);
-  assert.equal(b.step,'completed');
-  assert.deepEqual([b.vehicle,b.brand,b.model,b.cc,b.capital,b.capitalAmount,b.operation,b.quota,b.name,b.locality],
-    ['MOTO','Honda','Wave 110','110 cc','SÍ','400000','FINANCIACIÓN','$300.000','Laura','General Roca']);
+test('moto: marca, cilindrada, capital, cuota abierta y datos; sin modelo',()=>{
+ const b=play(['MOTO','Honda','110 cc','SÍ','400000','FINANCIACIÓN','250000','Laura','General Roca']);
+ assert.equal(b.step,'completed');
+ assert.equal(b.model,undefined);
+ assert.deepEqual([b.vehicle,b.brand,b.cc,b.capitalAmount,b.quota],['MOTO','Honda','110 cc','400000','250000']);
 });
-test('moto con marca, modelo y cilindrada OTRA, compra directa',()=>{
-  const b=play(['MOTO','OTRA','Benelli','TNT 300','OTRA','302 cc','NO','COMPRA DIRECTA','Sol','Allen']);
-  assert.equal(b.step,'completed');
-  assert.deepEqual([b.brand,b.model,b.cc,b.operation],['Benelli','TNT 300','302 cc','COMPRA DIRECTA']);
+test('moto marca OTRA y cilindrada OTRA',()=>{
+ const b=play(['1','OTRA','Benelli','OTRA','302 cc','NO','COMPRA DIRECTA','Sol','Allen']);
+ assert.equal(b.step,'completed');
+ assert.deepEqual([b.brand,b.cc,b.model],['Benelli','302 cc',undefined]);
 });
-test('auto con cuota sin mínimo y sin entrega inicial',()=>{
-  const b=play(['2','Toyota','Corolla','1.8','NO','FINANCIACIÓN','100000','Nico','Neuquén']);
-  assert.equal(b.step,'completed');
-  assert.equal(b.vehicle,'AUTO');assert.equal(b.quota,'100000');assert.equal(b.capital,'NO');
+test('auto pregunta año, no cilindrada ni motorización',()=>{
+ const b=play(['AUTO','Toyota','Corolla','2018 a 2022','NO','FINANCIACIÓN','100000','Nico','Neuquén']);
+ assert.equal(b.step,'completed');assert.equal(b.year,'2018 a 2022');assert.equal(b.cc,undefined);
+ assert.equal(b.quota,'100000');
 });
-test('camioneta con capital y compra directa',()=>{
-  const b=play(['3','Ford','Ranger','2.0','SÍ','12000000','COMPRA DIRECTA','Ana','Cipolletti']);
-  assert.equal(b.step,'completed');
-  assert.equal(b.vehicle,'CAMIONETA');assert.equal(b.capitalAmount,'12000000');
+test('camioneta pregunta años y compra directa',()=>{
+ const b=play(['CAMIONETA','Ford','Ranger','2020 o más','SÍ','12000000','COMPRA DIRECTA','Ana','Cipolletti']);
+ assert.equal(b.step,'completed');assert.equal(b.year,'2020 o más');assert.equal(b.cc,undefined);
 });
-test('configuración del administrador modifica bienvenida y catálogo',()=>{
-  const s={config:{welcome:'Bienvenidos al concesionario de Roca',brands:{Kawasaki:['Ninja 400']}}};
-  const b={step:'vehicle'};
-  assert.match(question(s,b),/Bienvenidos al concesionario/);
-  advance(s,b,'MOTO');
-  assert.match(question(s,b),/Kawasaki/);
-  advance(s,b,'Kawasaki');
-  assert.match(question(s,b),/Ninja 400/);
+test('marcas ampliadas y sin pregunta por modelo de moto',()=>{
+ const b={step:'vehicle'};advance(session,b,'MOTO');
+ const text=question(session,b);
+ for(const brand of ['Yamaha','Bajaj','Kawasaki','Benelli','Royal Enfield','Voge'])assert.match(text,new RegExp(brand));
+ advance(session,b,'Yamaha');assert.equal(b.step,'cc');
+ assert.match(question(session,b),/cilindrada/i);
 });
-
-test('administrador cambia textos sin perder opciones válidas',()=>{
-  const s={config:{prompts:{vehicle:'Elegí el tipo de vehículo:',capital:'¿Contás con una entrega inicial?'}}};
-  const b={step:'vehicle'};
-  assert.match(question(s,b),/^Elegí el tipo de vehículo:/);
-  assert.match(question(s,b),/1\. MOTO/);
-  assert.equal(advance(s,b,'AUTO'),true);
-  assert.equal(advance(s,b,'Toyota'),true);
-  assert.equal(advance(s,b,'Corolla'),true);
-  assert.equal(advance(s,b,'1.8'),true);
-  assert.match(question(s,b),/^¿Contás con una entrega inicial\?/);
-  assert.match(question(s,b),/1\. SÍ/);
+test('cuota libre y personalización administrativa',()=>{
+ const custom={config:{welcome:'Bienvenidos a Roca',prompts:{vehicle:'Elegí un vehículo:',year:'¿Qué años te gustan?'}}};
+ const b={step:'vehicle'};assert.match(question(custom,b),/Elegí un vehículo/);
+ for(const reply of ['AUTO','Toyota','Corolla'])assert.equal(advance(custom,b,reply),true);
+ assert.match(question(custom,b),/¿Qué años te gustan/);
+ assert.equal(advance(custom,b,'2021'),true);
+ assert.equal(advance(custom,b,'NO'),true);
+ assert.equal(advance(custom,b,'FINANCIACIÓN'),true);
+ assert.equal(question(custom,b),'¿Qué cuota mensual podrías pagar por mes?');
 });
