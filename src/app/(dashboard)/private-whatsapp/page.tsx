@@ -34,6 +34,7 @@ export default function PrivateWhatsappPage() {
   const admin = accountRole === "owner" || accountRole === "admin";
   const [leads, setLeads] = useState<Lead[]>([]);
   const [status, setStatus] = useState<Status>({});
+  const [gatewayOnline, setGatewayOnline] = useState<boolean | null>(null);
   const [working, setWorking] = useState(false);
   const [phone, setPhone] = useState("");
   const [pairCode, setPairCode] = useState("");
@@ -51,6 +52,10 @@ export default function PrivateWhatsappPage() {
   }, [accountId, user?.id]);
 
   const checkStatus = useCallback(async () => {
+    try { const res = await fetch("/api/private-wa/health", { cache: "no-store" });
+      const data = await res.json() as { online?: boolean };
+      setGatewayOnline(res.ok && data.online === true); }
+    catch { setGatewayOnline(false); }
     try {
       const response = await fetch("/api/private-wa/session", { cache: "no-store" });
       const data = await response.json() as Status;
@@ -133,6 +138,9 @@ export default function PrivateWhatsappPage() {
           {readableStatus(status.status)}
         </span>
       </div>
+      <p className={"mt-2 text-xs " + (gatewayOnline ? "text-emerald-600" : "text-amber-600")}>
+        Servicio privado: {gatewayOnline === null ? "verificando..." : gatewayOnline ? "en línea" : "sin conexión"}
+      </p>
       {status.error && <p className="mt-3 text-xs text-amber-600">{status.error}</p>}
       <p className="mt-2 text-xs text-muted-foreground">Vinculá una vez desde Dispositivos vinculados de WhatsApp Business. El servicio evita importar el historial y los chats anteriores.</p>
       {status.qr && <div className="mt-4 flex justify-center"><img src={status.qr} alt="Código QR para vincular WhatsApp Business" className="w-60 rounded-xl bg-white p-3" /></div>}
