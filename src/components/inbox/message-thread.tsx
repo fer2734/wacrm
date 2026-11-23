@@ -1024,8 +1024,8 @@ export function MessageThread({
           <div className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-foreground sm:flex">
             {displayName.charAt(0).toUpperCase()}
           </div>
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-0.5">
               <button type="button" onClick={() => setSummaryExpanded(v => !v)}
                 aria-expanded={summaryExpanded} aria-label="Ver u ocultar resumen inicial del filtro del cliente"
                 title="Ver resumen inicial del filtro del bot"
