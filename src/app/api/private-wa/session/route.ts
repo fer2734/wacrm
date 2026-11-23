@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { getCurrentAccount, toErrorResponse } from "@/lib/auth/account";
 import { supabaseAdmin } from "@/lib/flows/admin-client";
+import { privateWASecrets } from "@/lib/private-wa/secrets";
 
 export const dynamic = "force-dynamic";
 type Command = { action?: "start" | "pair" | "logout"; phone?: string };
 const noCache = { "Cache-Control": "private, no-store, max-age=0" };
 async function proxy(action: "start" | "pair" | "logout" | "status", input: Command = {}) {
   const ctx = await getCurrentAccount();
-  const host = process.env.PRIVATE_WA_GATEWAY_URL;
-  const token = process.env.PRIVATE_WA_GATEWAY_TOKEN;
+  const { gatewayUrl: host, gatewayToken: token } = privateWASecrets();
   if (!host || !token) return NextResponse.json({ error: "La conexión privada todavía no está habilitada en el servidor.", configured: false }, { status: 503, headers: noCache });
   const path = `/session/${ctx.userId}/${action}`;
   const requestBody = action === "start" ? await (async () => {
