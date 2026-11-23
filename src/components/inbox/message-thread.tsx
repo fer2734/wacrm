@@ -5,6 +5,7 @@ import {es} from "date-fns/locale";
 import { ConversationStage } from "./conversation-stage";
 import { ConversationNotes } from "./conversation-notes";
 import { BotIntakeSummary } from "./bot-intake-summary";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TaskEditor } from "@/components/agenda/task-editor";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from "react";
@@ -1008,7 +1009,7 @@ export function MessageThread({
       {/* Header — solid card surface sits on top of the doodle so the
           name/avatar/dropdowns stay legible. */}
       <div className="z-20 flex shrink-0 items-center justify-between gap-1 border-b border-border bg-card px-2 py-1.5 sm:gap-2 sm:px-4 sm:py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
           {/* Back-to-list button — mobile only. Hidden on lg+ where the
               conversation list is always visible next to the thread. */}
           {onBack && (
@@ -1016,7 +1017,7 @@ export function MessageThread({
               type="button"
               onClick={onBack}
               aria-label={t("backToConversations")}
-              className="flex size-8 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-muted lg:hidden"
+              className="mr-1 flex size-8 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-muted sm:mr-0 lg:hidden"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
@@ -1186,7 +1187,12 @@ export function MessageThread({
         </div>
       </div>
 
-      {summaryExpanded && <BotIntakeSummary key={conversation.id} conversationId={conversation.id} />}
+      <Dialog open={summaryExpanded} onOpenChange={setSummaryExpanded}>
+        <DialogContent className="max-h-[80dvh] max-w-sm overflow-y-auto p-3 sm:max-w-lg">
+          <DialogHeader><DialogTitle>Filtro inicial de {displayName}</DialogTitle></DialogHeader>
+          {summaryExpanded && <BotIntakeSummary key={conversation.id} conversationId={conversation.id} />}
+        </DialogContent>
+      </Dialog>
       <TaskEditor open={agendaOpen} onOpenChange={setAgendaOpen}
         contact={{ id: contact.id, name: displayName, phone: phoneNumber }} />
       <ConversationStage key={conversation.id} conversationId={conversation.id} />
