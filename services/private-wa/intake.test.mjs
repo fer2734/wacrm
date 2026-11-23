@@ -50,3 +50,20 @@ test('cuota libre y personalización administrativa',()=>{
  assert.equal(advance(custom,b,'FINANCIACIÓN'),true);
  assert.equal(question(custom,b),'¿Qué cuota mensual podrías pagar por mes?');
 });
+
+test('NO LO SÉ permite avanzar en marca y modelo de auto o camioneta',()=>{
+  for(const vehicle of ['AUTO','CAMIONETA']){
+    const b={step:'vehicle'};
+    assert.equal(advance(session,b,vehicle),true);
+    assert.match(question(session,b),/NO LO SÉ/);
+    assert.equal(advance(session,b,'no lo se'),true);
+    assert.equal(b.brand,'NO LO SÉ');
+    assert.equal(b.step,'model');
+    assert.match(question(session,b),/NO LO SÉ/);
+    assert.equal(advance(session,b,'NO LO SÉ'),true);
+    assert.equal(b.model,'NO LO SÉ');
+    assert.equal(b.step,'year');
+    assert.equal(advance(session,b,'2020'),true);
+    assert.equal(b.step,'capital');
+  }
+});
