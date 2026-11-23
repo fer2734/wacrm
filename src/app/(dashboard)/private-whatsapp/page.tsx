@@ -21,6 +21,7 @@ const initial: BotConfig = {
     Corven: ["Energy 110", "Triax 150", "Hunter 150"],
     Keller: ["KN110-8", "Stratus 150"],
     Mondial: ["LD 110 Max", "RD 150"],
+    Yamaha: [], Bajaj: [], Suzuki: [], Kawasaki: [], KTM: [], Benelli: [], Hero: [], "Royal Enfield": [], CFMoto: [], TVS: [], Beta: [], Voge: [],
   },
 };
 const row = "rounded-xl border border-border bg-card p-4";
@@ -81,7 +82,7 @@ export default function PrivateWhatsappPage() {
       .then(({ data }) => {
         if (!data?.config) return;
         const stored = data.config as Partial<BotConfig>;
-        const next = { ...initial, ...stored, brands: stored.brands || initial.brands };
+        const next = { ...initial, ...stored, brands: { ...initial.brands, ...stored.brands } };
         setConfig(next);
         setBrandsText(JSON.stringify(next.brands, null, 2));
         setPromptsText(JSON.stringify(next.prompts || {}, null, 2));
@@ -109,9 +110,9 @@ export default function PrivateWhatsappPage() {
     setSaving(true);
     try {
       const brands = JSON.parse(brandsText) as Record<string, string[]>;
-      if (!brands || Array.isArray(brands) || Object.keys(brands).length > 9 ||
+      if (!brands || Array.isArray(brands) || Object.keys(brands).length > 22 ||
           Object.values(brands).some(v => !Array.isArray(v) || v.length > 9 || v.some(x => typeof x !== "string")))
-        throw new Error("Usá hasta 9 marcas y hasta 9 modelos por marca.");
+        throw new Error("Usá hasta 22 marcas y hasta 9 modelos por marca.");
       const prompts = JSON.parse(promptsText) as Record<string,string>;
       if (!prompts || Array.isArray(prompts) || Object.keys(prompts).length > 20 ||
         Object.values(prompts).some(x => typeof x !== "string" || x.length > 450))
@@ -180,7 +181,7 @@ export default function PrivateWhatsappPage() {
               {lead.read_at ? <CheckCircle2 className="size-4 text-muted-foreground" /> : <span className="size-2 rounded-full bg-primary"/>}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">{lead.phone} · {lead.locality} · {new Date(lead.created_at).toLocaleString("es-AR")}</div>
-            <p className="mt-2 text-sm">{[s.vehicle, s.brand, s.model, s.cc].filter(Boolean).join(" · ")}</p>
+            <p className="mt-2 text-sm">{[s.vehicle, s.brand, s.model, s.year, s.cc].filter(Boolean).join(" · ")}</p>
             <p className="mt-1 text-xs">Entrega: {s.capital === "SÍ" ? s.capitalAmount || "Sí" : "Sin capital"} · {s.operation || "A definir"} · Cuota: {s.quota || "No indicó"}</p>
           </button>;
         })}
@@ -194,9 +195,9 @@ export default function PrivateWhatsappPage() {
       <label className="mt-3 block text-sm font-medium">Mensaje de derivación</label>
       <textarea className="mt-1 w-full rounded-lg border border-input bg-background p-3 text-sm" rows={3} value={config.transfer} onChange={e=>setConfig(x=>({...x,transfer:e.target.value}))}/>
       <label className="mt-3 block text-sm font-medium">Preguntas personalizadas (JSON)</label>
-      <p className="mt-1 text-xs text-muted-foreground">Podés modificar las preguntas sin alterar las opciones del menú. Claves disponibles: vehicle, brand, brand_other, model, model_other, cc, cc_other, capital, capital_amount, operation, quota, quota_other, name, locality. Dejá vacío para mantener los textos predeterminados.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Podés modificar las preguntas sin alterar las opciones del menú. Claves disponibles: vehicle, brand, brand_other, model, year, cc, cc_other, capital, capital_amount, operation, quota, name, locality. Dejá vacío para mantener los textos predeterminados.</p>
       <textarea spellCheck={false} className="mt-1 w-full rounded-lg border border-input bg-background p-3 font-mono text-xs" rows={6} value={promptsText} onChange={e=>setPromptsText(e.target.value)}/>
-      <label className="mt-3 block text-sm font-medium">Marcas y modelos de motos (JSON)</label>
+      <label className="mt-3 block text-sm font-medium">Marcas de motos (JSON; no se pregunta modelo)</label>
       <textarea spellCheck={false} className="mt-1 w-full rounded-lg border border-input bg-background p-3 font-mono text-xs" rows={12} value={brandsText} onChange={e=>setBrandsText(e.target.value)}/>
       <button disabled={saving} className={button + " mt-3"} onClick={() => void saveConfig()}>{saving ? <Loader2 className="inline size-4 animate-spin"/> : null} Guardar configuración</button>
     </section>}
