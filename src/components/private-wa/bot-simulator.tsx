@@ -46,7 +46,6 @@ function optionsFor(step: Step, fields: Fields, cfg: BotConfig): string[] {
 
     case "cc": return fields.vehicle === "MOTO" ? motorcycles : [];
     case "capital": return ["SÍ", "NO"];
-    case "operation": return ["FINANCIACIÓN", "COMPRA DIRECTA"];
 
     default: return [];
   }
@@ -63,8 +62,7 @@ function question(step: Step, fields: Fields, cfg: BotConfig): string {
     cc_other: "Indicá la cilindrada que estás buscando.",
     capital: "¿Tenés capital para una entrega?",
     capital_amount: "¿Con cuánto dinero contás para la entrega? Escribí el importe aproximado.",
-    operation: "¿Buscás financiación o compra directa?",
-    quota: "¿Qué cuota mensual podrías pagar por mes?",
+    quota: "Para financiación, ¿qué cuota te queda cómoda?",
     quota_other: "¿Qué importe mensual te gustaría pagar?",
     name: "¿Cuál es tu nombre?",
     locality: "¿De qué localidad sos?",
@@ -92,9 +90,8 @@ function next(step: Step, fields: Fields, value: string, cfg: BotConfig): { step
       if (picked === "OTRA" && f.vehicle === "MOTO") return { step: "cc_other", fields: f };
       f.cc = picked; return { step: "capital", fields: f };
     case "cc_other": f.cc = picked; return { step: "capital", fields: f };
-    case "capital": f.capital = picked; return { step: picked === "SÍ" ? "capital_amount" : "operation", fields: f };
-    case "capital_amount": f.capitalAmount = picked; return { step: "operation", fields: f };
-    case "operation": f.operation = picked; return { step: picked === "FINANCIACIÓN" ? "quota" : "name", fields: f };
+    case "capital": f.capital = picked; return { step: picked === "SÍ" ? "capital_amount" : "quota", fields: f };
+    case "capital_amount": f.capitalAmount = picked; return { step: "quota", fields: f };
     case "quota": f.quota = picked; return { step: "name", fields: f };
     case "quota_other": f.quota = picked; return { step: "name", fields: f };
     case "name": f.name = picked; return { step: "locality", fields: f };
@@ -173,7 +170,7 @@ export function PrivateBotSimulator({ config }: { config: BotConfig }) {
             "Vehículo": session.fields.vehicle, "Marca": session.fields.brand,
             ...(session.fields.vehicle === "MOTO" ? { "Cilindrada": session.fields.cc } : { "Modelo": session.fields.model, "Años aproximados": session.fields.year }),
             "Tiene entrega": session.fields.capital, "Capital disponible": session.fields.capitalAmount,
-            "Operación": session.fields.operation, "Cuota deseada": session.fields.quota,
+            "Cuota deseada": session.fields.quota,
           }).map(([label, value]) => <p key={label}><strong>{label}:</strong> {value || "No indicó"}</p>)}
         </div>
         <p className="mt-3 text-xs text-muted-foreground">Simulación completada. No se creó ningún cliente real.</p>
