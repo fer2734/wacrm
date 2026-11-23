@@ -11,7 +11,7 @@ type BotConfig = {
 };
 type Step =
   | "vehicle" | "brand" | "brand_other" | "model" | "model_other"
-  | "cc" | "cc_other" | "year" | "capital" | "capital_amount" | "operation"
+  | "cc" | "cc_other" | "year" | "capital" | "capital_amount"
   | "quota" | "quota_other" | "name" | "locality" | "completed";
 type Fields = {
   vehicle?: string; brand?: string; model?: string; year?: string; cc?: string;
