@@ -7,10 +7,11 @@ import { toast } from "sonner";
 
 type Lead = { id: string; name: string; phone: string; locality: string; summary: Record<string, string | null>; created_at: string; read_at: string | null };
 type Status = { status?: string; qr?: string | null; code?: string; error?: string; configured?: boolean };
-type BotConfig = { welcome: string; transfer: string; brands: Record<string, string[]> };
+type BotConfig = { welcome: string; transfer: string; brands: Record<string, string[]>; prompts: Record<string, string> };
 const initial: BotConfig = {
   welcome: "¡Bienvenido/a a Valle Automotores! 📍 Estamos en General Roca, Río Negro. ¿Qué vehículo estás buscando?",
   transfer: "¡Muchas gracias! Ya registramos tu consulta. Te derivamos a un asesor de Valle Automotores.",
+  prompts: {},
   brands: {
     Honda: ["Wave 110", "GLH 150", "XR 150", "XR 250"],
     Motomel: ["B110", "S2 150", "Skua 150", "Skua 250"],
@@ -40,6 +41,7 @@ export default function PrivateWhatsappPage() {
   const [pairCode, setPairCode] = useState("");
   const [config, setConfig] = useState<BotConfig>(initial);
   const [brandsText, setBrandsText] = useState(JSON.stringify(initial.brands, null, 2));
+  const [promptsText, setPromptsText] = useState(JSON.stringify(initial.prompts, null, 2));
   const [saving, setSaving] = useState(false);
 
   const reload = useCallback(async () => {
@@ -81,6 +83,7 @@ export default function PrivateWhatsappPage() {
         const next = { ...initial, ...stored, brands: stored.brands || initial.brands };
         setConfig(next);
         setBrandsText(JSON.stringify(next.brands, null, 2));
+        setPromptsText(JSON.stringify(next.prompts || {}, null, 2));
       });
   }, [admin, accountId]);
 
@@ -108,7 +111,11 @@ export default function PrivateWhatsappPage() {
       if (!brands || Array.isArray(brands) || Object.keys(brands).length > 9 ||
           Object.values(brands).some(v => !Array.isArray(v) || v.length > 9 || v.some(x => typeof x !== "string")))
         throw new Error("Usá hasta 9 marcas y hasta 9 modelos por marca.");
-      const next = { ...config, brands };
+      const prompts = JSON.parse(promptsText) as Record<string,string>;
+      if (!prompts || Array.isArray(prompts) || Object.keys(prompts).length > 20 ||
+        Object.values(prompts).some(x => typeof x !== "string" || x.length > 450))
+        throw new Error("Las preguntas deben ser textos de hasta 450 caracteres.");
+      const next = { ...config, brands, prompts };
       const { error } = await createClient().from("private_wa_bot_configs").upsert({
         account_id: accountId, config: next, updated_at: new Date().toISOString(),
       }, { onConflict: "account_id" });
@@ -184,6 +191,9 @@ export default function PrivateWhatsappPage() {
       <textarea className="mt-1 w-full rounded-lg border border-input bg-background p-3 text-sm" rows={3} value={config.welcome} onChange={e=>setConfig(x=>({...x,welcome:e.target.value}))}/>
       <label className="mt-3 block text-sm font-medium">Mensaje de derivación</label>
       <textarea className="mt-1 w-full rounded-lg border border-input bg-background p-3 text-sm" rows={3} value={config.transfer} onChange={e=>setConfig(x=>({...x,transfer:e.target.value}))}/>
+      <label className="mt-3 block text-sm font-medium">Preguntas personalizadas (JSON)</label>
+      <p className="mt-1 text-xs text-muted-foreground">Podés modificar las preguntas sin alterar las opciones del menú. Claves disponibles: vehicle, brand, brand_other, model, model_other, cc, cc_other, capital, capital_amount, operation, quota, quota_other, name, locality. Dejá vacío para mantener los textos predeterminados.</p>
+      <textarea spellCheck={false} className="mt-1 w-full rounded-lg border border-input bg-background p-3 font-mono text-xs" rows={6} value={promptsText} onChange={e=>setPromptsText(e.target.value)}/>
       <label className="mt-3 block text-sm font-medium">Marcas y modelos de motos (JSON)</label>
       <textarea spellCheck={false} className="mt-1 w-full rounded-lg border border-input bg-background p-3 font-mono text-xs" rows={12} value={brandsText} onChange={e=>setBrandsText(e.target.value)}/>
       <button disabled={saving} className={button + " mt-3"} onClick={() => void saveConfig()}>{saving ? <Loader2 className="inline size-4 animate-spin"/> : null} Guardar configuración</button>
