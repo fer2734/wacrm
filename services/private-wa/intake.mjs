@@ -20,11 +20,11 @@ function selected(input, arr) {
 function config(s) {
  const raw=s.config||{};
  const brands=raw.brands && typeof raw.brands==='object' && !Array.isArray(raw.brands) ? raw.brands : brandsDefault;
- return { brands, brandNames:Object.keys(brands).slice(0,9),
+ return { brands, brandNames:Object.keys(brands).slice(0,9), prompts: raw.prompts && typeof raw.prompts==='object' && !Array.isArray(raw.prompts) ? raw.prompts : {},
   welcome:clean(raw.welcome||defaultWelcome,400),
   transfer:clean(raw.transfer||defaultTransfer,400) };
 }
-function question(s, b) {
+function builtInQuestion(s, b) {
  const c=config(s);
  switch(b.step) {
   case 'vehicle':return c.welcome+'\n'+lines(['MOTO','AUTO','CAMIONETA'])+'\nRespondé únicamente 1, 2 o 3.';
@@ -89,4 +89,12 @@ function advance(s,b,value) {
  return true;
 }
 
+function question(s,b) {
+  const base = builtInQuestion(s,b);
+  const override = config(s).prompts?.[b.step];
+  if (typeof override !== 'string' || !override.trim()) return base;
+  const label = override.trim().slice(0,450);
+  const menuAt = base.indexOf('\n1.');
+  return menuAt >= 0 ? label + base.slice(menuAt) : label;
+}
 export { question, advance, config };
