@@ -83,9 +83,9 @@ function next(step: Step, fields: Fields, value: string, cfg: BotConfig): { step
     case "vehicle": f.vehicle = picked; return { step: "brand", fields: f };
     case "brand":
       if (picked === "OTRA" && f.vehicle === "MOTO") return { step: "brand_other", fields: f };
-      f.brand = f.vehicle !== "MOTO" && /^(no lo se|no se)$/i.test(picked.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")) ? "NO LO SÉ" : picked; return { step: f.vehicle === "MOTO" ? "cc" : "model", fields: f };
+      f.brand = f.vehicle !== "MOTO" && /^(no lo se|no se)$/i.test(picked.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) ? "NO LO SÉ" : picked; return { step: f.vehicle === "MOTO" ? "cc" : "model", fields: f };
     case "brand_other": f.brand = picked; return { step: "cc", fields: f };
-    case "model": f.model = /^(no lo se|no se)$/i.test(picked.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")) ? "NO LO SÉ" : picked; return { step: "year", fields: f };
+    case "model": f.model = /^(no lo se|no se)$/i.test(picked.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) ? "NO LO SÉ" : picked; return { step: "year", fields: f };
     case "year": f.year = picked; return { step: "capital", fields: f };
     case "model_other": f.model = picked; return { step: "cc", fields: f };
     case "cc":
