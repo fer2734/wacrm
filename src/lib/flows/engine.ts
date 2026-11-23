@@ -1353,7 +1353,7 @@ async function startNewRun(
     await executeHandoff(db, run, { node_key: "human_request", config: { round_robin: true, note: "Solicitud inicial de atención humana. Mensaje: " + input.message.text } } as unknown as FlowNodeRow);
     return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
   }
-  const intakeEntry = (flow.trigger_config as Record<string, unknown>).sales_intake === true && run.vars.vehiculo ? "resources" : flow.entry_node_id!;
+  const intakeEntry = (flow.trigger_config as Record<string, unknown>).sales_intake === true && run.vars.vehiculo && nodes.has("resources") ? "resources" : flow.entry_node_id!;
   const outcome = await advanceFromNodeKey(db, run, intakeEntry, nodes);
   return {
     consumed: true,
