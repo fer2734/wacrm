@@ -180,7 +180,7 @@ export const VALLE_SALES_FLOW: FlowTemplate = {
         {
           "reply_id": "no",
           "title": "NO",
-          "next_node_key": "operacion"
+          "next_node_key": "cuota"
         }
       ]
     }
@@ -191,34 +191,14 @@ export const VALLE_SALES_FLOW: FlowTemplate = {
     "config": {
       "prompt_text": "¿Con cuánto dinero contás para la entrega? Indicá el importe aproximado.",
       "var_key": "capital",
-      "next_node_key": "operacion"
-    }
-  },
-  {
-    "node_key": "operacion",
-    "node_type": "send_buttons",
-    "config": {
-      "text": "¿Buscás financiación o compra directa?",
-      "save_var_key": "tipo_operacion",
-      "buttons": [
-        {
-          "reply_id": "financiacion",
-          "title": "FINANCIACIÓN",
-          "next_node_key": "cuota"
-        },
-        {
-          "reply_id": "directa",
-          "title": "COMPRA DIRECTA",
-          "next_node_key": "nombre"
-        }
-      ]
+      "next_node_key": "cuota"
     }
   },
   {
     "node_key": "cuota",
     "node_type": "collect_input",
     "config": {
-      "prompt_text": "¿Qué cuota mensual podrías pagar por mes?",
+      "prompt_text": "Para financiación, ¿qué cuota te queda cómoda?",
       "var_key": "cuota",
       "next_node_key": "nombre"
     }
@@ -254,7 +234,7 @@ export const VALLE_SALES_FLOW: FlowTemplate = {
     "node_type": "handoff",
     "config": {
       "round_robin": true,
-      "note": "Nuevo cliente Valle Automotores\nNombre: {{vars.nombre}}\nLocalidad: {{vars.localidad}}\nVehículo: {{vars.tipo_vehiculo}}\nMarca: {{vars.marca}}\nModelo (auto/camioneta): {{vars.modelo}}\nAños aproximados (auto/camioneta): {{vars.anios}}\nCilindrada (moto): {{vars.cilindrada}}\nTiene capital: {{vars.tiene_capital}}\nCapital disponible: {{vars.capital}}\nOperación: {{vars.tipo_operacion}}\nCuota mensual deseada: {{vars.cuota}}\nMensaje inicial: {{vars.initial_message}}\nDerivación rotativa; bot detenido al asignar."
+      "note": "Nuevo cliente Valle Automotores\nNombre: {{vars.nombre}}\nLocalidad: {{vars.localidad}}\nVehículo: {{vars.tipo_vehiculo}}\nMarca: {{vars.marca}}\nModelo (auto/camioneta): {{vars.modelo}}\nAños aproximados (auto/camioneta): {{vars.anios}}\nCilindrada (moto): {{vars.cilindrada}}\nTiene capital: {{vars.tiene_capital}}\nCapital disponible: {{vars.capital}}\nCuota mensual deseada: {{vars.cuota}}\nMensaje inicial: {{vars.initial_message}}\nDerivación rotativa; bot detenido al asignar."
     }
   }
 ],
