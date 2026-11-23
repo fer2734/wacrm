@@ -54,9 +54,9 @@ function optionsFor(step: Step, fields: Fields, cfg: BotConfig): string[] {
 function question(step: Step, fields: Fields, cfg: BotConfig): string {
   const known: Record<Step, string> = {
     vehicle: cfg.welcome || "¡Bienvenido/a a Valle Automotores! Estamos en General Roca, Río Negro. ¿Qué estás buscando?",
-    brand: fields.vehicle === "MOTO" ? "¿Qué marca de moto buscás?" : "¿Qué marca buscás? Podés escribir OTRA.",
+    brand: fields.vehicle === "MOTO" ? "¿Qué marca de moto buscás?" : "¿Qué marca buscás? Si todavía no lo decidiste, respondé NO LO SÉ.",
     brand_other: "¿Qué otra marca buscás?",
-    model: "¿Qué modelo buscás?",
+    model: "¿Qué modelo buscás? Si todavía no lo sabés, respondé NO LO SÉ.",
     year: "¿De qué años aproximadamente lo buscás?",
     model_other: "¿Qué otro modelo te interesa?",
     cc: "¿Qué cilindrada preferís?",
@@ -83,9 +83,9 @@ function next(step: Step, fields: Fields, value: string, cfg: BotConfig): { step
     case "vehicle": f.vehicle = picked; return { step: "brand", fields: f };
     case "brand":
       if (picked === "OTRA" && f.vehicle === "MOTO") return { step: "brand_other", fields: f };
-      f.brand = picked; return { step: f.vehicle === "MOTO" ? "cc" : "model", fields: f };
+      f.brand = f.vehicle !== "MOTO" && /^(no lo se|no se)$/i.test(picked.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")) ? "NO LO SÉ" : picked; return { step: f.vehicle === "MOTO" ? "cc" : "model", fields: f };
     case "brand_other": f.brand = picked; return { step: "cc", fields: f };
-    case "model": f.model = picked; return { step: "year", fields: f };
+    case "model": f.model = /^(no lo se|no se)$/i.test(picked.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")) ? "NO LO SÉ" : picked; return { step: "year", fields: f };
     case "year": f.year = picked; return { step: "capital", fields: f };
     case "model_other": f.model = picked; return { step: "cc", fields: f };
     case "cc":
@@ -139,6 +139,7 @@ export function PrivateBotSimulator({ config }: { config: BotConfig }) {
         )}
       </div>
       {session.step !== "completed" ? <>
+        {(session.step === "brand" || session.step === "model") && session.fields.vehicle !== "MOTO" && <button type="button" className="mt-3 min-h-11 rounded-lg border border-border bg-background px-4 text-sm font-semibold" onClick={() => submit("NO LO SÉ")}>NO LO SÉ</button>}
         {opts.length ? <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
           {opts.map(option => <button type="button" key={option} onClick={() => submit(option)}
             className="min-h-11 rounded-lg border border-border bg-background px-2 text-sm font-medium hover:bg-muted">
