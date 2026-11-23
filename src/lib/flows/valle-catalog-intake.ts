@@ -32,11 +32,11 @@ list("cilindrada_moto", "¿Qué cilindrada preferís?", [
 ], "cilindrada");
 text("cilindrada_moto_otra", "Indicá la cilindrada que estás buscando.", "cilindrada", "capital");
 
-text("auto_marca", "¿Qué marca de auto buscás? Podés escribir OTRA.", "marca", "auto_modelo");
-text("auto_modelo", "¿Qué modelo de auto te interesa?", "modelo", "auto_anios");
+text("auto_marca", "¿Qué marca de auto buscás? Si todavía no lo decidiste, respondé NO LO SÉ.", "marca", "auto_modelo");
+text("auto_modelo", "¿Qué modelo de auto buscás? Si todavía no lo sabés, respondé NO LO SÉ.", "modelo", "auto_anios");
 text("auto_anios", "¿De qué años aproximadamente lo buscás?", "anios", "capital");
-text("camioneta_marca", "¿Qué marca de camioneta buscás? Podés escribir OTRA.", "marca", "camioneta_modelo");
-text("camioneta_modelo", "¿Qué modelo de camioneta te interesa?", "modelo", "camioneta_anios");
+text("camioneta_marca", "¿Qué marca de camioneta buscás? Si todavía no lo decidiste, respondé NO LO SÉ.", "marca", "camioneta_modelo");
+text("camioneta_modelo", "¿Qué modelo de camioneta buscás? Si todavía no lo sabés, respondé NO LO SÉ.", "modelo", "camioneta_anios");
 text("camioneta_anios", "¿De qué años aproximadamente lo buscás?", "anios", "capital");
 
 buttons("capital", "¿Tenés capital para la entrega?", [
