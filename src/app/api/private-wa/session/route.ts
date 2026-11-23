@@ -11,10 +11,11 @@ async function proxy(action: "start" | "pair" | "logout" | "status", input: Comm
   const { gatewayUrl: host, gatewayToken: token } = privateWASecrets();
   if (!host || !token) return NextResponse.json({ error: "La conexión privada todavía no está habilitada en el servidor.", configured: false }, { status: 503, headers: noCache });
   const path = `/session/${ctx.userId}/${action}`;
-  const requestBody = action === "start" ? await (async () => {
+  // Both QR and pairing-code actions must create the private session on first use.
+  const requestBody = action === "start" || action === "pair" ? await (async () => {
     const { data } = await ctx.supabase.from("private_wa_bot_configs").select("config").eq("account_id", ctx.accountId).maybeSingle();
-    return { accountId: ctx.accountId, config: data?.config || {} };
-  })() : action === "pair" ? { phone: input.phone } : {};
+    return { accountId: ctx.accountId, config: data?.config || {}, ...(action === "pair" ? { phone: input.phone } : {}) };
+  })() : {};
   let response: Response;
   try {
     response = await fetch(new URL(path, host), {
