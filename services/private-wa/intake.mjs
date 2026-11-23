@@ -30,9 +30,9 @@ function builtInQuestion(s, b) {
  switch(b.step) {
   case 'vehicle':return c.welcome+'\n'+lines(['MOTO','AUTO','CAMIONETA'])+'\nRespondé únicamente 1, 2 o 3.';
   case 'brand':return b.vehicle==='MOTO' ? '¿Qué marca de moto buscás?\n'+lines([...c.brandNames,'OTRA']) :
-    '¿Qué marca de '+b.vehicle.toLowerCase()+' buscás? Escribí la marca o OTRA.';
+    '¿Qué marca de '+b.vehicle.toLowerCase()+' buscás? Si todavía no lo decidiste, respondé NO LO SÉ.';
   case 'brand_other':return '¿Qué otra marca buscás?';
-  case 'model':return '¿Qué modelo de '+b.brand+' te interesa?';
+  case 'model':return b.brand==='NO LO SÉ' ? '¿Qué modelo te interesa? Si todavía no lo sabés, respondé NO LO SÉ.' : '¿Qué modelo de '+b.brand+' te interesa? Si todavía no lo sabés, respondé NO LO SÉ.';
   case 'model_other':return '¿Qué otro modelo te interesa?';
   case 'cc':return '¿Qué cilindrada preferís?\n'+lines(['110 cc','125 cc','150 cc','200 cc','250 cc','300 cc o más','OTRA']);
   case 'year':return '¿De qué años aproximadamente lo buscás?';
@@ -55,11 +55,11 @@ function advance(s,b,value) {
  case 'vehicle':{const x=pick(['MOTO','AUTO','CAMIONETA']);if(!x)return false;b.vehicle=x;b.step='brand';break;}
  case 'brand':{
    if(b.vehicle==='MOTO'){const x=pick([...c.brandNames,'OTRA']);if(!x)return false;if(x==='OTRA'){b.step='brand_other';break;}b.brand=x;}
-   else b.brand=v;
+   else b.brand=['NO LO SE','NO SÉ','NO SE'].includes(norm(v))?'NO LO SÉ':v;
    b.step=b.vehicle==='MOTO'?'cc':'model';break;
  }
  case 'brand_other':b.brand=v;b.step='cc';break;
- case 'model':b.model=v;b.step='year';break;
+ case 'model':b.model=['NO LO SE','NO SÉ','NO SE'].includes(norm(v))?'NO LO SÉ':v;b.step='year';break;
  case 'year':b.year=v;b.step='capital';break;
  case 'cc':{
   if(b.vehicle==='MOTO'){const x=pick(['110 cc','125 cc','150 cc','200 cc','250 cc','300 cc o más','OTRA']);if(!x)return false;if(x==='OTRA'){b.step='cc_other';break;}b.cc=x;}
