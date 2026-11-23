@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  Smartphone,
   Radio,
   Settings,
   Shield,
@@ -94,6 +95,7 @@ const navItems: NavItem[] = [
   { href: "/agenda", labelKey: "agenda", icon: CalendarDays },
   { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/inbox", labelKey: "inbox", icon: MessageSquare },
+  { href: "/private-whatsapp", labelKey: "privateWhatsapp", icon: Smartphone },
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
@@ -211,7 +213,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.filter((item) => accountRole !== "agent" ||
-              ["/inbox", "/contacts", "/notifications", "/pipelines", "/agenda"].includes(item.href)).map((item) => {
+              ["/inbox", "/private-whatsapp", "/contacts", "/notifications", "/pipelines", "/agenda"].includes(item.href)).map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));
