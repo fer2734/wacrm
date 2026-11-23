@@ -91,10 +91,10 @@ export function ConversationList({
     setArchiveBusy(true);
     const supabase = createClient();
     const result = archive
-      ? await supabase.from("conversation_archives").upsert({ account_id:accountId, user_id:user.id, conversation_id:conv.id }, {onConflict:"user_id,conversation_id"})
+      ? await supabase.from("conversation_archives").insert({ account_id:accountId, user_id:user.id, conversation_id:conv.id })
       : await supabase.from("conversation_archives").delete().eq("user_id",user.id).eq("conversation_id",conv.id);
     setArchiveBusy(false);
-    if(result.error){ toast.error(archive ? "No se pudo archivar" : "No se pudo desarchivar");return; }
+    if(result.error && !(archive && result.error.code === "23505")){ console.error("[conversation-archives]", result.error.code, result.error.message); toast.error(archive ? "No se pudo archivar" : "No se pudo desarchivar");return; }
     setArchivedIds(prev => {const next=new Set(prev);if(archive) next.add(conv.id);else next.delete(conv.id);return next;});
     setMenuConversation(null);
     toast.success(archive ? "Chat archivado" : "Chat recuperado");
