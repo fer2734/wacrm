@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { RotateCcw, Send, FlaskConical } from "lucide-react";
 
 type BotConfig = {
@@ -106,6 +106,19 @@ export function PrivateBotSimulator({ config }: { config: BotConfig }) {
   const start = (): Session => ({ step: "vehicle", fields: {}, history: [{ role: "bot", text: question("vehicle", {}, config) }] });
   const [session, setSession] = useState<Session>(start);
   const [input, setInput] = useState("");
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const latestQuestionRef = useRef<HTMLDivElement>(null);
+  const answerControlsRef = useRef<HTMLDivElement>(null);
+
+  // Keep the new question visible as soon as React renders each answer.
+  useLayoutEffect(() => {
+    const box = messagesRef.current;
+    if (!box) return;
+    box.scrollTop = box.scrollHeight;
+    // On small screens, also bring the new prompt and answers into view.
+    latestQuestionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    answerControlsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [session.history.length]);
   const opts = useMemo(() => optionsFor(session.step, session.fields, config), [session.step, session.fields, config]);
   function submit(value: string) {
     const outcome = next(session.step, session.fields, value, config);
@@ -129,15 +142,16 @@ export function PrivateBotSimulator({ config }: { config: BotConfig }) {
           <RotateCcw className="size-4"/> Reiniciar
         </button>
       </div>
-      <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto rounded-xl bg-muted/40 p-3">
+      <div ref={messagesRef} className="mt-4 max-h-[420px] space-y-3 overflow-y-auto rounded-xl bg-muted/40 p-3">
         {session.history.map((entry, index) =>
-          <div key={index} className={`flex ${entry.role === "customer" ? "justify-end" : "justify-start"}`}>
+          <div key={index} ref={index === session.history.length - 1 ? latestQuestionRef : undefined} className={`flex ${entry.role === "customer" ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[92%] whitespace-pre-wrap rounded-2xl p-3 text-sm ${entry.role === "customer" ? "bg-primary text-primary-foreground" : "border border-border bg-background text-foreground"}`}>
               {entry.text}
             </div>
           </div>
         )}
       </div>
+      <div ref={answerControlsRef}>
       {session.step !== "completed" ? <>
         {(session.step === "brand" || session.step === "model") && session.fields.vehicle !== "MOTO" && <button type="button" className="mt-3 min-h-11 rounded-lg border border-border bg-background px-4 text-sm font-semibold" onClick={() => submit("NO LO SÉ")}>NO LO SÉ</button>}
         {opts.length ? <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -164,6 +178,7 @@ export function PrivateBotSimulator({ config }: { config: BotConfig }) {
         </div>
         <p className="mt-3 text-xs text-muted-foreground">Simulación completada. No se creó ningún cliente real.</p>
       </div>}
+      </div>
     </section>
   );
 }
