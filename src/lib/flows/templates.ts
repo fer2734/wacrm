@@ -30,6 +30,7 @@ import type {
   StartNodeConfig,
 } from "./types";
 import { getT } from "@/lib/i18n/translate";
+import { VALLE_CATALOG_INTAKE } from "./valle-catalog-intake";
 
 export type FlowTemplateNodeType =
   | "start"
@@ -305,6 +306,7 @@ const TEMPLATES: Record<string, FlowTemplate> = {
   welcome_menu: WELCOME_MENU,
   faq_bot: FAQ_BOT,
   lead_capture: LEAD_CAPTURE,
+  valle_catalog_intake: VALLE_CATALOG_INTAKE,
 };
 
 export function getFlowTemplate(slug: string): FlowTemplate | null {
