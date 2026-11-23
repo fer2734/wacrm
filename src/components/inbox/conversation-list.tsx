@@ -1,5 +1,8 @@
 "use client";
 import {useContactAliases} from "@/hooks/use-contact-aliases";
+import { useAuth } from "@/hooks/use-auth";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -11,7 +14,7 @@ import {
 import { applyInboxFilter, type InboxFilter } from "@/lib/inbox/inbox-filters";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X } from "lucide-react";
+import { Search, ChevronDown, X, Archive, ArchiveRestore } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { useTranslations } from "next-intl";
@@ -62,7 +65,41 @@ export function ConversationList({
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
   const {aliases}=useContactAliases();
-  
+  const {user, accountId} = useAuth();
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
+  const [archivesLoaded, setArchivesLoaded] = useState(false);
+  const [showArchives, setShowArchives] = useState(false);
+  const [menuConversation, setMenuConversation] = useState<Conversation | null>(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id || !accountId) return;
+    let cancelled = false;
+    setArchivesLoaded(false);
+    void createClient().from("conversation_archives").select("conversation_id")
+      .eq("user_id", user.id).eq("account_id",accountId).then(({data,error}) => {
+        if(cancelled) return;
+        if(error) toast.error("No se pudieron cargar los chats archivados");
+        else setArchivedIds(new Set((data ?? []).map(row => row.conversation_id)));
+        setArchivesLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [user?.id, accountId]);
+
+  const changeArchived = useCallback(async (conv: Conversation, archive: boolean) => {
+    if (!user?.id || !accountId || archiveBusy) return;
+    setArchiveBusy(true);
+    const supabase = createClient();
+    const result = archive
+      ? await supabase.from("conversation_archives").upsert({ account_id:accountId, user_id:user.id, conversation_id:conv.id }, {onConflict:"user_id,conversation_id"})
+      : await supabase.from("conversation_archives").delete().eq("user_id",user.id).eq("conversation_id",conv.id);
+    setArchiveBusy(false);
+    if(result.error){ toast.error(archive ? "No se pudo archivar" : "No se pudo desarchivar");return; }
+    setArchivedIds(prev => {const next=new Set(prev);if(archive) next.add(conv.id);else next.delete(conv.id);return next;});
+    setMenuConversation(null);
+    toast.success(archive ? "Chat archivado" : "Chat recuperado");
+  }, [user?.id,accountId,archiveBusy]);
+
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
     { label: t("filterUnread"), value: "unread" },
@@ -262,8 +299,8 @@ export function ConversationList({
       });
     }
 
-    return result;
-  }, [conversations, filter, now, search, selectedTagIds, selectedCompany, aliases]);
+    return result.filter(conv => showArchives ? archivedIds.has(conv.id) : !archivedIds.has(conv.id));
+  }, [conversations, filter, now, search, selectedTagIds, selectedCompany, aliases, archivedIds, showArchives]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -312,6 +349,13 @@ export function ConversationList({
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
+          <button type="button" onClick={() => setShowArchives(x => !x)}
+            aria-pressed={showArchives}
+            className={cn("inline-flex min-h-8 items-center gap-1 rounded-lg border px-2 text-xs font-semibold",showArchives ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-foreground hover:bg-muted")}>
+            {showArchives ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+            {showArchives ? "Volver a chats" : "Archivados"}
+            {!showArchives && archivedIds.size > 0 && <span className="rounded-full bg-muted px-1.5 text-[10px]">{archivedIds.size}</span>}
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
                 {activeFilter?.label ?? t("filterAll")}
@@ -472,13 +516,13 @@ export function ConversationList({
           space — the list then overflows and gets clipped by the
           parent's overflow-hidden with no scrollbar (issue #229). */}
       <ScrollArea className="min-h-0 flex-1">
-        {loading ? (
+        {loading || !archivesLoaded ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="px-4 py-12 text-center">
-            <p className="text-sm text-muted-foreground">{t("noConversations")}</p>
+            <p className="text-sm text-muted-foreground">{showArchives ? "No hay chats archivados" : t("noConversations")}</p>
           </div>
         ) : (
           <div className="flex flex-col">
@@ -489,12 +533,27 @@ export function ConversationList({
                 salesStage={salesStages[conv.id]}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                onLongPress={setMenuConversation}
+                isArchived={archivedIds.has(conv.id)}
                 t={t}
               />
             ))}
           </div>
         )}
       </ScrollArea>
+      <Dialog open={!!menuConversation} onOpenChange={open => {if(!open) setMenuConversation(null);}}>
+        <DialogContent className="max-w-xs p-4">
+          <DialogHeader><DialogTitle>Opciones del chat</DialogTitle></DialogHeader>
+          <p className="truncate text-sm font-medium text-foreground">{menuConversation?.contact?.name || menuConversation?.contact?.phone || "Cliente"}</p>
+          <button type="button" disabled={archiveBusy}
+            className="flex min-h-11 w-full items-center gap-3 rounded-lg border border-border px-3 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+            onClick={() => {if(menuConversation) void changeArchived(menuConversation,!archivedIds.has(menuConversation.id));}}>
+            {menuConversation && archivedIds.has(menuConversation.id) ? <ArchiveRestore className="size-5 text-primary"/> : <Archive className="size-5 text-primary"/>}
+            {menuConversation && archivedIds.has(menuConversation.id) ? "Desarchivar conversación" : "Archivar conversación"}
+          </button>
+          <p className="text-xs text-muted-foreground">Los mensajes no se eliminan; solo se oculta este chat de tu lista.</p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -504,6 +563,8 @@ interface ConversationItemProps {
   salesStage?: SalesStageLabel;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  onLongPress: (conversation: Conversation) => void;
+  isArchived: boolean;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -512,6 +573,8 @@ function ConversationItem({
   salesStage,
   isActive,
   onSelect,
+  onLongPress,
+  isArchived,
   t,
 }: ConversationItemProps) {
   const {aliases}=useContactAliases();
@@ -519,7 +582,17 @@ function ConversationItem({
   const displayName = (contact?.id && aliases[contact.id]) || contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
 
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const consumedRef = useRef(false);
+  const clearPress = useCallback(() => {if(timerRef.current) clearTimeout(timerRef.current);timerRef.current=null;},[]);
+  useEffect(() => () => clearPress(),[clearPress]);
+  const startPress = useCallback(() => {
+    clearPress();
+    consumedRef.current=false;
+    timerRef.current=setTimeout(() => {consumedRef.current=true;onLongPress(conversation);},550);
+  },[clearPress,onLongPress,conversation]);
   const handleClick = useCallback(() => {
+    if(consumedRef.current){consumedRef.current=false;return;}
     onSelect(conversation);
   }, [onSelect, conversation]);
 
@@ -538,6 +611,12 @@ function ConversationItem({
   return (
     <button
       onClick={handleClick}
+      onPointerDown={e => {if(e.pointerType === "touch" || e.pointerType === "pen") startPress();}}
+      onPointerUp={clearPress}
+      onPointerCancel={clearPress}
+      onPointerLeave={clearPress}
+      onContextMenu={e => {e.preventDefault();clearPress();consumedRef.current=true;onLongPress(conversation);}}
+      aria-label={`Chat de ${displayName}; mantené presionado para ${isArchived ? "desarchivar" : "archivar"}`}
       className={cn(
         "flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50",
         isActive && "border-l-2 border-primary bg-muted/70"
