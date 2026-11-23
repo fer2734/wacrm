@@ -14,23 +14,23 @@ test('solo tres opciones iniciales',()=>{
  assert.equal(advance(session,b,'barco'),false);
 });
 test('moto: marca, cilindrada, capital, cuota abierta y datos; sin modelo',()=>{
- const b=play(['MOTO','Honda','110 cc','SÍ','400000','FINANCIACIÓN','250000','Laura','General Roca']);
+ const b=play(['MOTO','Honda','110 cc','SÍ','400000','250000','Laura','General Roca']);
  assert.equal(b.step,'completed');
  assert.equal(b.model,undefined);
  assert.deepEqual([b.vehicle,b.brand,b.cc,b.capitalAmount,b.quota],['MOTO','Honda','110 cc','400000','250000']);
 });
 test('moto marca OTRA y cilindrada OTRA',()=>{
- const b=play(['1','OTRA','Benelli','OTRA','302 cc','NO','COMPRA DIRECTA','Sol','Allen']);
+ const b=play(['1','OTRA','Benelli','OTRA','302 cc','NO','350000','Sol','Allen']);
  assert.equal(b.step,'completed');
  assert.deepEqual([b.brand,b.cc,b.model],['Benelli','302 cc',undefined]);
 });
 test('auto pregunta año, no cilindrada ni motorización',()=>{
- const b=play(['AUTO','Toyota','Corolla','2018 a 2022','NO','FINANCIACIÓN','100000','Nico','Neuquén']);
+ const b=play(['AUTO','Toyota','Corolla','2018 a 2022','NO','100000','Nico','Neuquén']);
  assert.equal(b.step,'completed');assert.equal(b.year,'2018 a 2022');assert.equal(b.cc,undefined);
  assert.equal(b.quota,'100000');
 });
-test('camioneta pregunta años y compra directa',()=>{
- const b=play(['CAMIONETA','Ford','Ranger','2020 o más','SÍ','12000000','COMPRA DIRECTA','Ana','Cipolletti']);
+test('camioneta pregunta años y cuota cómoda',()=>{
+ const b=play(['CAMIONETA','Ford','Ranger','2020 o más','SÍ','12000000','550000','Ana','Cipolletti']);
  assert.equal(b.step,'completed');assert.equal(b.year,'2020 o más');assert.equal(b.cc,undefined);
 });
 test('marcas ampliadas y sin pregunta por modelo de moto',()=>{
@@ -47,8 +47,7 @@ test('cuota libre y personalización administrativa',()=>{
  assert.match(question(custom,b),/¿Qué años te gustan/);
  assert.equal(advance(custom,b,'2021'),true);
  assert.equal(advance(custom,b,'NO'),true);
- assert.equal(advance(custom,b,'FINANCIACIÓN'),true);
- assert.equal(question(custom,b),'¿Qué cuota mensual podrías pagar por mes?');
+ assert.equal(question(custom,b),'Para financiación, ¿qué cuota te queda cómoda?');
 });
 
 test('NO LO SÉ permite avanzar en marca y modelo de auto o camioneta',()=>{
