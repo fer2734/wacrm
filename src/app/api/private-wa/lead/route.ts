@@ -1,13 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/flows/admin-client";
+import { privateWASecrets } from "@/lib/private-wa/secrets";
 
 export const dynamic = "force-dynamic";
 const isUuid = (s: unknown) => typeof s === "string" && /^[a-f\d]{8}(-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(s);
 const safe = (s: unknown, n = 150) => typeof s === "string" ? s.trim().slice(0, n) : "";
 
 export async function POST(request: Request) {
-  const secret = process.env.PRIVATE_WA_CALLBACK_SECRET;
+  const { callbackSecret: secret } = privateWASecrets();
   if (!secret || secret.length < 32) return NextResponse.json({ error: "Not configured" }, { status: 503 });
   const raw = await request.text();
   if (raw.length > 12_000) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
