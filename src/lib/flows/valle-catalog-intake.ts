@@ -18,28 +18,9 @@ buttons("vehiculo", "¡Bienvenido/a a Valle Automotores! Estamos en General Roca
   { id: "camioneta", title: "CAMIONETA", next: "camioneta_marca" },
 ], "tipo_vehiculo");
 
-const brands: Record<string, string[]> = {
-  Honda: ["Wave 110", "GLH 150", "XR 150", "XR 250"],
-  Motomel: ["B110", "S2 150", "Skua 150", "Skua 250"],
-  Gilera: ["Smash 110", "VC 150", "Sahel 150"],
-  Zanella: ["ZB 110", "ZR 150", "RX 150"],
-  Corven: ["Energy 110", "Triax 150", "Hunter 150"],
-  Keller: ["KN110-8", "Stratus 150", "Crono Classic"],
-  Mondial: ["LD 110 Max", "RD 150"],
-};
-const brandNames = Object.keys(brands);
-list("marcas_moto", "¿Qué marca de moto te interesa?", [
-  ...brandNames.map((brand, index) => ({ id: "m" + index, title: brand, next: "modelo_" + index })),
-  { id: "otra", title: "OTRA", next: "marca_moto_otra" },
-], "marca");
-text("marca_moto_otra", "¿Qué otra marca buscás?", "marca", "modelo_moto_otra");
-text("modelo_moto_otra", "¿Qué modelo de moto buscás?", "modelo", "cilindrada_moto");
-for (const [index, brand] of brandNames.entries()) {
-  list("modelo_" + index, "¿Qué modelo de " + brand + " te interesa?", [
-    ...brands[brand].map((model, n) => ({ id: "mod_" + index + "_" + n, title: model, next: "cilindrada_moto" })),
-    { id: "otra", title: "OTRA", next: "modelo_moto_otra" },
-  ], "modelo");
-}
+const motoMarcas = ["Honda","Motomel","Gilera","Zanella","Corven","Keller","Mondial","Yamaha","Bajaj","Suzuki","Kawasaki","KTM","Benelli","Hero","Royal Enfield","CFMoto","TVS","Beta","Voge"];
+// Un menú de texto admite más marcas que la lista interactiva de WhatsApp (máximo 10 filas).
+text("marcas_moto", "¿Qué marca de moto buscás? Respondé con el nombre o el número:\\n" + [...motoMarcas, "OTRA"].map((b, i) => `${i + 1}. ${b}`).join("\\n"), "marca", "cilindrada_moto");
 list("cilindrada_moto", "¿Qué cilindrada preferís?", [
   { id: "110", title: "110 cc", next: "capital" },
   { id: "125", title: "125 cc", next: "capital" },
@@ -52,11 +33,11 @@ list("cilindrada_moto", "¿Qué cilindrada preferís?", [
 text("cilindrada_moto_otra", "Indicá la cilindrada que estás buscando.", "cilindrada", "capital");
 
 text("auto_marca", "¿Qué marca de auto buscás? Podés escribir OTRA.", "marca", "auto_modelo");
-text("auto_modelo", "¿Qué modelo de auto te interesa?", "modelo", "auto_cilindrada");
-text("auto_cilindrada", "¿Qué cilindrada o motorización buscás? Si no sabés, respondé «Indistinto».", "cilindrada", "capital");
+text("auto_modelo", "¿Qué modelo de auto te interesa?", "modelo", "auto_anios");
+text("auto_anios", "¿De qué años aproximadamente lo buscás?", "anios", "capital");
 text("camioneta_marca", "¿Qué marca de camioneta buscás? Podés escribir OTRA.", "marca", "camioneta_modelo");
-text("camioneta_modelo", "¿Qué modelo de camioneta te interesa?", "modelo", "camioneta_cilindrada");
-text("camioneta_cilindrada", "¿Qué cilindrada o motorización preferís? Si no sabés, respondé «Indistinto».", "cilindrada", "capital");
+text("camioneta_modelo", "¿Qué modelo de camioneta te interesa?", "modelo", "camioneta_anios");
+text("camioneta_anios", "¿De qué años aproximadamente lo buscás?", "anios", "capital");
 
 buttons("capital", "¿Tenés capital para la entrega?", [
   { id: "si", title: "SÍ", next: "capital_monto" },
@@ -64,20 +45,10 @@ buttons("capital", "¿Tenés capital para la entrega?", [
 ], "tiene_capital");
 text("capital_monto", "¿Con cuánto dinero contás para la entrega? Indicá un importe aproximado en pesos.", "capital", "forma_compra");
 buttons("forma_compra", "¿Buscás financiación o compra directa?", [
-  { id: "financiacion", title: "FINANCIACIÓN", next: "tipo_cuota" },
+  { id: "financiacion", title: "FINANCIACIÓN", next: "cuota_vehiculo" },
   { id: "directa", title: "COMPRA DIRECTA", next: "nombre" },
 ], "operacion");
-add("tipo_cuota", "condition", {
-  subject: "var", subject_key: "tipo_vehiculo", operator: "equals", value: "MOTO",
-  true_next: "cuota_moto", false_next: "cuota_vehiculo",
-});
-buttons("cuota_moto", "¿Qué cuota mensual te gustaría pagar?", [
-  { id: "300000", title: "$300.000", next: "nombre" },
-  { id: "500000", title: "$500.000", next: "nombre" },
-  { id: "mas", title: "MÁS", next: "cuota_otra" },
-], "cuota");
-text("cuota_otra", "¿Qué monto mensual de cuota te resultaría cómodo?", "cuota", "nombre");
-text("cuota_vehiculo", "¿Cuánto te gustaría pagar por mes de cuota? Indicá el monto que preferís, sin mínimo preestablecido.", "cuota", "nombre");
+text("cuota_vehiculo", "¿Qué cuota mensual podrías pagar por mes?", "cuota", "nombre");
 text("nombre", "¿Cuál es tu nombre?", "nombre", "localidad");
 text("localidad", "¿De qué localidad sos?", "localidad", "despedida");
 add("despedida", "send_message", {
@@ -86,13 +57,13 @@ add("despedida", "send_message", {
 });
 add("derivar", "handoff", {
   round_robin: true,
-  note: "Nuevo interesado de Valle Automotores\nNombre: {{vars.nombre}}\nLocalidad: {{vars.localidad}}\nVehículo: {{vars.tipo_vehiculo}}\nMarca: {{vars.marca}}\nModelo: {{vars.modelo}}\nCilindrada: {{vars.cilindrada}}\nCapital disponible: {{vars.tiene_capital}} {{vars.capital}}\nOperación: {{vars.operacion}}\nCuota deseada: {{vars.cuota}}\nDerivado al asesor para atención personalizada.",
+  note: "Nuevo interesado de Valle Automotores\nNombre: {{vars.nombre}}\nLocalidad: {{vars.localidad}}\nVehículo: {{vars.tipo_vehiculo}}\nMarca: {{vars.marca}}\nModelo (autos/camionetas): {{vars.modelo}}\nAños aproximados: {{vars.anios}}\nCilindrada (motos): {{vars.cilindrada}}\nCapital disponible: {{vars.tiene_capital}} {{vars.capital}}\nOperación: {{vars.operacion}}\nCuota deseada: {{vars.cuota}}\nDerivado al asesor para atención personalizada.",
 });
 
 export const VALLE_CATALOG_INTAKE: FlowTemplate = {
   slug: "valle_catalog_intake",
   name: "Valle Automotores · Calificación de clientes",
-  description: "Menú de MOTO, AUTO o CAMIONETA, modelos, entrega, financiación y derivación. Sin IA, con respuestas guiadas y datos resumidos.",
+  description: "Menú de MOTO, AUTO o CAMIONETA, marca y cilindrada de motos; modelo y años para autos, entrega, financiación y derivación. Sin IA, con respuestas guiadas y datos resumidos.",
   icon: "UserPlus",
   trigger_type: "first_inbound_message",
   trigger_config: { catalog_intake: true },
