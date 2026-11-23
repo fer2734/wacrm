@@ -18,6 +18,7 @@ import { useTranslations } from "next-intl";
 // (conversation_assigned) but this keeps future types a one-line add.
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
+  private_lead: Bell,
 };
 
 export default function NotificationsPage() {
@@ -124,6 +125,7 @@ export default function NotificationsPage() {
   const handleClick = useCallback(
     (n: Notification) => {
       if (!n.read_at) markRead(n.id);
+      if (n.type === "private_lead") { router.push("/private-whatsapp"); return; }
       if (n.conversation_id) {
         router.push(`/inbox?c=${n.conversation_id}`);
       }
