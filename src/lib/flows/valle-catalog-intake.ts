@@ -41,14 +41,10 @@ text("camioneta_anios", "¿De qué años aproximadamente lo buscás?", "anios", 
 
 buttons("capital", "¿Tenés capital para la entrega?", [
   { id: "si", title: "SÍ", next: "capital_monto" },
-  { id: "no", title: "NO", next: "forma_compra" },
+  { id: "no", title: "NO", next: "cuota_vehiculo" },
 ], "tiene_capital");
-text("capital_monto", "¿Con cuánto dinero contás para la entrega? Indicá un importe aproximado en pesos.", "capital", "forma_compra");
-buttons("forma_compra", "¿Buscás financiación o compra directa?", [
-  { id: "financiacion", title: "FINANCIACIÓN", next: "cuota_vehiculo" },
-  { id: "directa", title: "COMPRA DIRECTA", next: "nombre" },
-], "operacion");
-text("cuota_vehiculo", "¿Qué cuota mensual podrías pagar por mes?", "cuota", "nombre");
+text("capital_monto", "¿Con cuánto dinero contás para la entrega? Indicá un importe aproximado en pesos.", "capital", "cuota_vehiculo");
+text("cuota_vehiculo", "Para financiación, ¿qué cuota te queda cómoda?", "cuota", "nombre");
 text("nombre", "¿Cuál es tu nombre?", "nombre", "localidad");
 text("localidad", "¿De qué localidad sos?", "localidad", "despedida");
 add("despedida", "send_message", {
@@ -57,7 +53,7 @@ add("despedida", "send_message", {
 });
 add("derivar", "handoff", {
   round_robin: true,
-  note: "Nuevo interesado de Valle Automotores\nNombre: {{vars.nombre}}\nLocalidad: {{vars.localidad}}\nVehículo: {{vars.tipo_vehiculo}}\nMarca: {{vars.marca}}\nModelo (autos/camionetas): {{vars.modelo}}\nAños aproximados: {{vars.anios}}\nCilindrada (motos): {{vars.cilindrada}}\nCapital disponible: {{vars.tiene_capital}} {{vars.capital}}\nOperación: {{vars.operacion}}\nCuota deseada: {{vars.cuota}}\nDerivado al asesor para atención personalizada.",
+  note: "Nuevo interesado de Valle Automotores\nNombre: {{vars.nombre}}\nLocalidad: {{vars.localidad}}\nVehículo: {{vars.tipo_vehiculo}}\nMarca: {{vars.marca}}\nModelo (autos/camionetas): {{vars.modelo}}\nAños aproximados: {{vars.anios}}\nCilindrada (motos): {{vars.cilindrada}}\nCapital disponible: {{vars.tiene_capital}} {{vars.capital}}\nCuota deseada: {{vars.cuota}}\nDerivado al asesor para atención personalizada.",
 });
 
 export const VALLE_CATALOG_INTAKE: FlowTemplate = {
