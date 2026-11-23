@@ -241,7 +241,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                     )}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : t(item.labelKey as string)}</span>
+                    <span className="flex-1">{item.href === "/pipelines" && accountRole === "agent" ? t("myPipeline") : (item.href === "/private-whatsapp" ? "Mi WhatsApp privado" : t(item.labelKey as string))}</span>
                     {item.beta && (
                       <span
                         aria-label={t("beta")}
