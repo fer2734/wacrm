@@ -46,3 +46,16 @@ test('configuración del administrador modifica bienvenida y catálogo',()=>{
   advance(s,b,'Kawasaki');
   assert.match(question(s,b),/Ninja 400/);
 });
+
+test('administrador cambia textos sin perder opciones válidas',()=>{
+  const s={config:{prompts:{vehicle:'Elegí el tipo de vehículo:',capital:'¿Contás con una entrega inicial?'}}};
+  const b={step:'vehicle'};
+  assert.match(question(s,b),/^Elegí el tipo de vehículo:/);
+  assert.match(question(s,b),/1\. MOTO/);
+  assert.equal(advance(s,b,'AUTO'),true);
+  assert.equal(advance(s,b,'Toyota'),true);
+  assert.equal(advance(s,b,'Corolla'),true);
+  assert.equal(advance(s,b,'1.8'),true);
+  assert.match(question(s,b),/^¿Contás con una entrega inicial\?/);
+  assert.match(question(s,b),/1\. SÍ/);
+});
