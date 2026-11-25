@@ -199,7 +199,7 @@ export function MessageThread({
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
 
-  const { user, canManageMembers, isAgent } = useAuth();
+  const { user, canManageMembers } = useAuth();
   const {aliases}=useContactAliases();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
