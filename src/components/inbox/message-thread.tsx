@@ -87,7 +87,7 @@ import {
 
 const MESSAGE_PAGE_SIZE = 200;
 // This CRM tracks sales while advisors answer via their own WhatsApp numbers.
-const USE_PERSONAL_WHATSAPP_ONLY = true;
+const USE_PERSONAL_WHATSAPP_ONLY = false;
 
 interface ReplyDraft {
   id: string;
@@ -305,7 +305,7 @@ export function MessageThread({
 
   // 24-hour session timer
   const sessionInfo = useMemo(() => {
-    if (!messages.length) return { expired: false, remaining: "" };
+    if (!messages.length) return { expired: true, remaining: tTimer("noCustomerMessages") };
 
     // Find last customer message
     const lastCustomerMsg = [...messages]
@@ -1303,7 +1303,7 @@ export function MessageThread({
       />
 
       {/* Messaging from CRM is disabled for this personal-number workflow. */}
-      {USE_PERSONAL_WHATSAPP_ONLY || (isAgent && assignedAgentId) ? <div className="z-20 flex shrink-0 items-center justify-center gap-2 border-t border-border bg-card px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] text-center sm:px-3 sm:py-2"><p className="hidden text-xs text-muted-foreground sm:block">Respondé desde tu WhatsApp y guardá las novedades en las notas.</p>{phoneNumber && <a href={`https://wa.me/${phoneNumber.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground sm:w-auto sm:text-sm">Abrir en mi WhatsApp</a>}</div> : <MessageComposer
+      {USE_PERSONAL_WHATSAPP_ONLY ? <div className="z-20 flex shrink-0 items-center justify-center gap-2 border-t border-border bg-card px-2 py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] text-center sm:px-3 sm:py-2"><p className="hidden text-xs text-muted-foreground sm:block">Respondé desde tu WhatsApp y guardá las novedades en las notas.</p>{phoneNumber && <a href={`https://wa.me/${phoneNumber.replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground sm:w-auto sm:text-sm">Abrir en mi WhatsApp</a>}</div> : <MessageComposer
         conversationId={conversation.id}
         sessionExpired={sessionInfo.expired}
         onSend={handleSend}
