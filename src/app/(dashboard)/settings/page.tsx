@@ -3,6 +3,7 @@
 import { Suspense, useMemo, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
+import { readPhotoResponse, validateProfilePhoto } from '@/lib/whatsapp/profile-photo-response';
 import { useTranslations } from 'next-intl';
 
 import { useAuth } from '@/hooks/use-auth';
@@ -113,11 +114,13 @@ function WhatsAppProfilePhoto() {
   if (!canManageMembers) return null;
   async function save() {
     if (!file || busy) return;
+    const validationError = validateProfilePhoto(file);
+    if (validationError) { toast.error(validationError); return; }
     setBusy(true);
     try {
       const body = new FormData(); body.append('photo',file);
-      const res = await fetch('/api/whatsapp/profile-photo',{method:'POST',body});
-      const result = await res.json();
+      const res = await fetch('/api/whatsapp/profile-photo',{method:'POST',body,headers:{Accept:'application/json'},redirect:'error'});
+      const result = await readPhotoResponse(res);
       if (!res.ok || !result.success) throw new Error(result.error || 'No se pudo actualizar la foto.');
       toast.success('Foto de WhatsApp actualizada en Meta.'); setFile(null);
     } catch(e) { toast.error(e instanceof Error ? e.message : 'Error al actualizar la foto.'); }
