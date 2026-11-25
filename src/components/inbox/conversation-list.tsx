@@ -26,6 +26,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ContactForm } from "@/components/contacts/contact-form";
+import { useCan } from "@/hooks/use-can";
+import { useRouter } from "next/navigation";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ConversationListProps {
@@ -66,6 +69,9 @@ export function ConversationList({
   const t = useTranslations("Inbox.conversationList");
   const {aliases}=useContactAliases();
   const {user, accountId} = useAuth();
+  const router = useRouter();
+  const canSend = useCan("send-messages");
+  const [newContactOpen, setNewContactOpen] = useState(false);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
   const [archivesLoaded, setArchivesLoaded] = useState(false);
   const [showArchives, setShowArchives] = useState(false);
@@ -338,6 +344,8 @@ export function ConversationList({
     <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
+        {canSend && <div className="flex gap-2"><button type="button" className="flex-1 rounded-lg bg-primary px-2 py-2 text-xs font-semibold text-primary-foreground" onClick={() => router.push("/contacts")}>+ Nueva conversación</button><button type="button" className="flex-1 rounded-lg border px-2 py-2 text-xs font-semibold" onClick={() => setNewContactOpen(true)}>+ Contacto</button></div>}
+        <ContactForm open={newContactOpen} onOpenChange={setNewContactOpen} onSaved={() => router.push("/contacts")} onViewExisting={() => router.push("/contacts")} />
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
