@@ -1,7 +1,8 @@
 'use client';
 
-import { Suspense, useMemo, type ReactNode } from 'react';
+import { Suspense, useMemo, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 
 import { useAuth } from '@/hooks/use-auth';
@@ -76,7 +77,7 @@ function SettingsPageInner() {
     profile: <ProfileForm />,
     security: <SecurityPanel />,
     appearance: <AppearancePanel />,
-    whatsapp: <WhatsAppConfig />,
+    whatsapp: <><WhatsAppConfig /><WhatsAppProfilePhoto /></>,
     templates: <TemplateManager />,
     'quick-replies': <QuickRepliesManager />,
     fields: <FieldsAndTagsPanel />,
@@ -103,4 +104,29 @@ function SettingsPageInner() {
       </div>
     </div>
   );
+}
+
+function WhatsAppProfilePhoto() {
+  const { canManageMembers } = useAuth();
+  const [file,setFile] = useState<File|null>(null);
+  const [busy,setBusy] = useState(false);
+  if (!canManageMembers) return null;
+  async function save() {
+    if (!file || busy) return;
+    setBusy(true);
+    try {
+      const body = new FormData(); body.append('photo',file);
+      const res = await fetch('/api/whatsapp/profile-photo',{method:'POST',body});
+      const result = await res.json();
+      if (!res.ok || !result.success) throw new Error(result.error || 'No se pudo actualizar la foto.');
+      toast.success('Foto de WhatsApp actualizada en Meta.'); setFile(null);
+    } catch(e) { toast.error(e instanceof Error ? e.message : 'Error al actualizar la foto.'); }
+    finally { setBusy(false); }
+  }
+  return <section className="mt-4 space-y-3 rounded-xl border border-border bg-card p-4">
+    <h2 className="font-semibold">Foto de perfil de WhatsApp principal</h2>
+    <p className="text-xs text-muted-foreground">Elegí una imagen JPG o PNG de hasta 5 MB. Se modificará el perfil comercial público.</p>
+    <input type="file" accept="image/jpeg,image/png" disabled={busy} onChange={e=>setFile(e.target.files?.[0] ?? null)} className="block w-full text-sm" />
+    <button type="button" disabled={!file || busy} onClick={()=>void save()} className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">{busy?'Actualizando…':'Actualizar foto'}</button>
+  </section>;
 }
