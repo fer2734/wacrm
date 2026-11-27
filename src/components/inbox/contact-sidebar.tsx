@@ -7,7 +7,7 @@ function ContactDetails({contact}:{contact:Contact}){const {user,accountId}=useA
  useEffect(()=>{if(!user)return;void Promise.resolve().then(load);const sync=()=>void load();window.addEventListener('wacrm-agenda-changed',sync);window.addEventListener('wacrm:contact-notes-changed',sync);const timer=window.setInterval(sync,20000);const channel=createClient().channel(`notes-${contact.id}`).on('postgres_changes',{event:'*',schema:'public',table:'contact_notes',filter:`contact_id=eq.${contact.id}`},sync).subscribe();return()=>{window.clearInterval(timer);window.removeEventListener('wacrm-agenda-changed',sync);window.removeEventListener('wacrm:contact-notes-changed',sync);void createClient().removeChannel(channel)}},[load,user,contact.id]);
  async function add(){if(!user||!accountId||!note.trim()||saving)return;setSaving(true);const {error}=await createClient().from('contact_notes').insert({user_id:user.id,account_id:accountId,contact_id:contact.id,note_text:note.trim()});setSaving(false);if(error)toast.error('No se pudo guardar la nota');else{setNote('');void load();window.dispatchEvent(new Event('wacrm:contact-notes-changed'));toast.success('Nota guardada')}}
  function openSale() {
-  const origin = 'https://gestion.valleautomotores.tech';
+  const origin = 'https://valle-erp-erp.ytg5fs.easypanel.host';
   const popup = window.open(origin + '/ventas/desde-crm', '_blank');
   if (!popup) { toast.error('Permití abrir la ventana del ERP'); return; }
   const stop = () => { window.removeEventListener('message', receive); window.clearInterval(timer); };
